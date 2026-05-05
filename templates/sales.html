@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto p-6 max-w-[1600px] overflow-y-auto">
+
+    <div class="flex justify-between items-end mb-6 border-b border-gray-200 pb-4">
+        <h2 class="text-2xl font-bold text-gray-800">Sales Pipeline</h2>
+        <div class="flex items-center gap-3">
+            <span id="roleBadge" class="hidden px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">Checking Role...</span>
+            <button id="addDealBtn" onclick="openDealModal()" class="hidden bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">+ Add Deal</button>
+        </div>
+    </div>
+
+    <!-- Summary strip -->
+    <div id="summaryStrip" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6"></div>
+
+    <!-- Pipeline columns -->
+    <div id="pipeline" class="grid grid-cols-1 md:grid-cols-5 gap-4"></div>
+</div>
+
+<!-- Add / Edit Deal Modal -->
+<div id="dealModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-5">
+            <h3 id="dealModalTitle" class="text-xl font-bold text-gray-800">Add Deal</h3>
+            <button onclick="closeDealModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <form id="dealForm" class="space-y-4">
+            <input type="hidden" id="dealId">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Title *</label>
+                <input type="text" id="dealTitle" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g. Acme Corp – fleet contract Q3">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Customer</label>
+                <select id="dealCustomer" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <option value="">— Unassigned —</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Stage</label>
+                    <select id="dealStage" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                        <option value="new">New</option>
+                        <option value="quoted">Quoted</option>
+                        <option value="negotiating">Negotiating</option>
+                        <option value="won">Won</option>
+                        <option value="lost">Lost</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Expected Close</label>
+                    <input type="date" id="dealClose" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+                <div class="col-span-2">
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Amount</label>
+                    <input type="number" id="dealAmount" step="0.01" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Currency</label>
+                    <input type="text" id="dealCurrency" maxlength="3" value="SGD" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Notes</label>
+                <textarea id="dealNotes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"></textarea>
+            </div>
+            <div id="dealFormError" class="hidden text-red-600 text-sm font-bold"></div>
+            <div class="flex justify-between items-center pt-2">
+                <button type="button" id="dealDeleteBtn" onclick="deleteDealFromModal()" class="hidden text-sm text-red-600 hover:text-red-800 font-bold">Delete</button>
+                <div class="flex gap-3 ml-auto">
+                    <button type="button" onclick="closeDealModal()" class="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                    <button type="submit" id="dealSubmitBtn" class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">Save</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const STAGES = [
+    { key: 'new',         label: 'New',         color: 'bg-gray-100 text-gray-700',       border: 'border-gray-300' },
+    { key: 'quoted',      label: 'Quoted',      color: 'bg-blue-100 text-blue-700',       border: 'border-blue-300' },
+    { key: 'negotiating', label: 'Negotiating', color: 'bg-yellow-100 text-yellow-700',   border: 'border-yellow-300' },
+    { key: 'won',         label: 'Won',         color: 'bg-green-100 text-green-700',     border: 'border-green-300' },
+    { key: 'lost',        label: 'Lost',        color: 'bg-red-100 text-red-700',         border: 'border-red-300' },
+];
+
+let isAdmin = false;
+let allDeals = [];
+let allCustomers = [];
+
+async function getAuthHeaders(jsonContent = true) {
+    let token = null;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+            try { token = JSON.parse(localStorage.getItem(key)).access_token; break; } catch (e) {}
+        }
+    }
+    if (!token) token = localStorage.getItem('evone_token');
+    const h = { 'Authorization': `Bearer ${token}` };
+    if (jsonContent) h['Content-Type'] = 'application/json';
+    return h;
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function fmtMoney(amount, currency) {
+    if (amount == null || amount === '') return '—';
+    const num = Number(amount);
+    if (Number.isNaN(num)) return '—';
+    try {
+        return new Intl.NumberFormat('en-SG', { style: 'currency', currency: currency || 'SGD', maximumFractionDigits: 0 }).format(num);
+    } catch {
+        return `${currency || 'SGD'} ${num.toFixed(2)}`;
+    }
+}
+
+async function refresh() {
+    await Promise.all([loadCustomers(), loadDeals(), loadSummary(), checkRole()]);
+    renderPipeline();
+}
+
+async function checkRole() {
+    if (window._adminChecked) return;
+    try {
+        const headers = await getAuthHeaders();
+        const r = await fetch('/api/list-files', { headers });
+        if (r.ok) {
+            const d = await r.json();
+            isAdmin = !!d.is_admin;
+            const badge = document.getElementById('roleBadge');
+            badge.classList.remove('hidden');
+            if (isAdmin) {
+                badge.textContent = 'Admin Mode';
+                badge.classList.replace('bg-gray-100', 'bg-indigo-100');
+                badge.classList.replace('text-gray-600', 'text-indigo-700');
+                document.getElementById('addDealBtn').classList.remove('hidden');
+            } else {
+                badge.textContent = 'Read-Only Mode';
+                badge.classList.replace('bg-gray-100', 'bg-green-100');
+                badge.classList.replace('text-gray-600', 'text-green-700');
+            }
+            window._adminChecked = true;
+        }
+    } catch {}
+}
+
+async function loadCustomers() {
+    try {
+        const headers = await getAuthHeaders();
+        const r = await fetch('/api/customers', { headers });
+        if (r.ok) {
+            const d = await r.json();
+            allCustomers = d.customers || [];
+            const sel = document.getElementById('dealCustomer');
+            sel.innerHTML = '<option value="">— Unassigned —</option>' +
+                allCustomers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        }
+    } catch {}
+}
+
+async function loadDeals() {
+    try {
+        const headers = await getAuthHeaders();
+        const r = await fetch('/api/deals', { headers });
+        if (r.ok) {
+            const d = await r.json();
+            allDeals = d.deals || [];
+        }
+    } catch {}
+}
+
+async function loadSummary() {
+    try {
+        const headers = await getAuthHeaders();
+        const r = await fetch('/api/deals/pipeline-summary', { headers });
+        const summary = r.ok ? await r.json() : {};
+        const strip = document.getElementById('summaryStrip');
+        strip.innerHTML = STAGES.map(s => {
+            const data = summary[s.key] || { count: 0, amount: 0 };
+            return `
+                <div class="bg-white p-4 rounded-xl border ${s.border} shadow-sm">
+                    <p class="text-xs font-bold uppercase ${s.color.split(' ')[1]}">${s.label}</p>
+                    <p class="text-2xl font-bold text-gray-800 mt-1">${data.count}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">${fmtMoney(data.amount, 'SGD')}</p>
+                </div>
+            `;
+        }).join('');
+    } catch {}
+}
+
+function customerName(id) {
+    const c = allCustomers.find(x => x.id === id);
+    return c ? c.name : '—';
+}
+
+function renderPipeline() {
+    const root = document.getElementById('pipeline');
+    root.innerHTML = STAGES.map(s => {
+        const dealsInStage = allDeals.filter(d => d.stage === s.key);
+        const cards = dealsInStage.map(d => `
+            <div onclick='openDealModal(${JSON.stringify(d).replace(/'/g, "&#39;")})' class="bg-white rounded-lg border border-gray-200 hover:border-indigo-400 hover:shadow-md transition p-3 cursor-pointer">
+                <p class="font-bold text-sm text-gray-800 leading-tight">${escapeHtml(d.title)}</p>
+                <p class="text-xs text-gray-500 mt-1">${escapeHtml(customerName(d.customer_id))}</p>
+                <div class="flex justify-between items-end mt-3">
+                    <span class="text-xs font-bold text-gray-700">${fmtMoney(d.amount, d.currency)}</span>
+                    ${d.expected_close_date ? `<span class="text-xs text-gray-400">${d.expected_close_date}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+        return `
+            <div class="bg-gray-50 rounded-xl p-3 flex flex-col min-h-[200px]">
+                <div class="flex justify-between items-center mb-3 px-1">
+                    <span class="px-2 py-1 text-xs font-bold rounded ${s.color}">${s.label}</span>
+                    <span class="text-xs text-gray-500 font-bold">${dealsInStage.length}</span>
+                </div>
+                <div class="space-y-2 flex-1">
+                    ${cards || `<p class="text-xs text-gray-400 italic text-center py-6">No deals</p>`}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ---------- Deal modal ----------
+
+function openDealModal(d) {
+    document.getElementById('dealFormError').classList.add('hidden');
+    document.getElementById('dealModalTitle').textContent = d ? 'Edit Deal' : 'Add Deal';
+    document.getElementById('dealId').value = d ? d.id : '';
+    document.getElementById('dealTitle').value = d ? d.title : '';
+    document.getElementById('dealCustomer').value = d ? (d.customer_id || '') : '';
+    document.getElementById('dealStage').value = d ? d.stage : 'new';
+    document.getElementById('dealClose').value = d ? (d.expected_close_date || '') : '';
+    document.getElementById('dealAmount').value = d ? (d.amount ?? '') : '';
+    document.getElementById('dealCurrency').value = d ? (d.currency || 'SGD') : 'SGD';
+    document.getElementById('dealNotes').value = d ? (d.notes || '') : '';
+
+    if (!isAdmin) {
+        // Read-only users still see the modal but can't save/delete.
+        document.getElementById('dealSubmitBtn').classList.add('hidden');
+        document.getElementById('dealDeleteBtn').classList.add('hidden');
+    } else {
+        document.getElementById('dealSubmitBtn').classList.remove('hidden');
+        document.getElementById('dealDeleteBtn').classList.toggle('hidden', !d);
+    }
+    document.getElementById('dealModal').classList.remove('hidden');
+}
+
+function closeDealModal() {
+    document.getElementById('dealModal').classList.add('hidden');
+}
+
+document.getElementById('dealForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('dealId').value;
+    const amountVal = document.getElementById('dealAmount').value;
+    const payload = {
+        title: document.getElementById('dealTitle').value.trim(),
+        customer_id: document.getElementById('dealCustomer').value || null,
+        stage: document.getElementById('dealStage').value,
+        expected_close_date: document.getElementById('dealClose').value || null,
+        amount: amountVal === '' ? null : Number(amountVal),
+        currency: document.getElementById('dealCurrency').value.trim().toUpperCase() || 'SGD',
+        notes: document.getElementById('dealNotes').value.trim() || null,
+    };
+    const btn = document.getElementById('dealSubmitBtn');
+    const errEl = document.getElementById('dealFormError');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(id ? `/api/deals/${id}` : '/api/deals', {
+            method: id ? 'PATCH' : 'POST',
+            headers,
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            errEl.textContent = data.message || data.detail || 'Save failed';
+            errEl.classList.remove('hidden');
+        } else {
+            closeDealModal();
+            await loadDeals();
+            await loadSummary();
+            renderPipeline();
+        }
+    } catch (err) {
+        errEl.textContent = 'Network error';
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Save';
+    }
+});
+
+async function deleteDealFromModal() {
+    const id = document.getElementById('dealId').value;
+    if (!id) return;
+    if (!confirm('Delete this deal? This cannot be undone.')) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/deals/${id}`, { method: 'DELETE', headers });
+    if (res.ok) {
+        closeDealModal();
+        await loadDeals();
+        await loadSummary();
+        renderPipeline();
+    } else {
+        alert('Failed to delete');
+    }
+}
+
+refresh();
+</script>
+{% endblock %}

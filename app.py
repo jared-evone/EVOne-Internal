@@ -20,7 +20,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
 import config
-from services import docuseal
+from services import docuseal, sales
 from services.supabase_client import (
     get_user_role_id,
     list_bucket,
@@ -99,6 +99,16 @@ async def serve_documents(request: Request):
 @app.get("/analytics")
 async def serve_analytics(request: Request):
     return templates.TemplateResponse(request=request, name="analytics.html")
+
+
+@app.get("/customers")
+async def serve_customers(request: Request):
+    return templates.TemplateResponse(request=request, name="customers.html")
+
+
+@app.get("/sales")
+async def serve_sales(request: Request):
+    return templates.TemplateResponse(request=request, name="sales.html")
 
 
 @app.get("/config")
@@ -229,7 +239,165 @@ async def resend_signature(submitter_id: int, user: dict = Depends(get_current_u
 
 
 # ==========================================
-# 5. Billing — PDF generation pipeline
+# 5. CRM — Customers & Contacts
+# ==========================================
+@app.get("/api/customers")
+async def api_list_customers(status: str | None = None, user: dict = Depends(get_current_user)):
+    try:
+        return {"customers": sales.list_customers(status=status)}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/customers")
+async def api_create_customer(data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.create_customer(data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/customers/{customer_id}")
+async def api_get_customer(customer_id: str, user: dict = Depends(get_current_user)):
+    try:
+        cust = sales.get_customer(customer_id)
+        if not cust:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        return cust
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.patch("/api/customers/{customer_id}")
+async def api_update_customer(customer_id: str, data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.update_customer(customer_id, data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/customers/{customer_id}")
+async def api_delete_customer(customer_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.delete_customer(customer_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/customers/{customer_id}/contacts")
+async def api_list_contacts(customer_id: str, user: dict = Depends(get_current_user)):
+    try:
+        return {"contacts": sales.list_contacts(customer_id)}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/customers/{customer_id}/contacts")
+async def api_create_contact(customer_id: str, data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.create_contact(customer_id, data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.patch("/api/contacts/{contact_id}")
+async def api_update_contact(contact_id: str, data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.update_contact(contact_id, data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/contacts/{contact_id}")
+async def api_delete_contact(contact_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.delete_contact(contact_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 6. Sales — Deal Pipeline
+# ==========================================
+@app.get("/api/deals")
+async def api_list_deals(
+    stage: str | None = None,
+    customer_id: str | None = None,
+    user: dict = Depends(get_current_user),
+):
+    try:
+        return {"deals": sales.list_deals(stage=stage, customer_id=customer_id)}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/deals/pipeline-summary")
+async def api_pipeline_summary(user: dict = Depends(get_current_user)):
+    try:
+        return sales.pipeline_summary()
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/deals")
+async def api_create_deal(data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.create_deal(data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/deals/{deal_id}")
+async def api_get_deal(deal_id: str, user: dict = Depends(get_current_user)):
+    try:
+        deal = sales.get_deal(deal_id)
+        if not deal:
+            raise HTTPException(status_code=404, detail="Deal not found")
+        return deal
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.patch("/api/deals/{deal_id}")
+async def api_update_deal(deal_id: str, data: dict, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.update_deal(deal_id, data)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/deals/{deal_id}")
+async def api_delete_deal(deal_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return sales.delete_deal(deal_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 7. Billing — PDF generation pipeline
 # ==========================================
 async def load_dataframe(file: UploadFile, sheet_name=None):
     if not file:

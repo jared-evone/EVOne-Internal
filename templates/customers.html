@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto p-6 max-w-7xl overflow-y-auto">
+
+    <div class="flex justify-between items-end mb-8 border-b border-gray-200 pb-4">
+        <h2 class="text-2xl font-bold text-gray-800">Customers</h2>
+        <div class="flex items-center gap-3">
+            <span id="roleBadge" class="hidden px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">Checking Role...</span>
+            <button id="addCustomerBtn" onclick="openCustomerModal()" class="hidden bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">+ Add Customer</button>
+        </div>
+    </div>
+
+    <div class="bg-white shadow-lg rounded-xl overflow-hidden border border-gray-100">
+        <div class="p-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h3 class="font-bold text-gray-700 whitespace-nowrap">All Customers</h3>
+            <div class="flex-1 w-full max-w-md relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <input type="text" id="searchInput" oninput="filterCustomers()" placeholder="Search by name..." class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            <select id="statusFilter" onchange="loadCustomers()" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <option value="">All statuses</option>
+                <option value="prospect">Prospect</option>
+                <option value="active">Active</option>
+                <option value="churned">Churned</option>
+            </select>
+            <button onclick="loadCustomers()" class="text-sm text-indigo-600 hover:text-indigo-800 font-bold transition whitespace-nowrap">Refresh</button>
+        </div>
+
+        <div class="max-h-[65vh] overflow-y-auto overflow-x-auto relative">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Notes</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Created</th>
+                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="customerList" class="divide-y divide-gray-100 text-sm bg-white">
+                    <tr><td colspan="5" class="px-6 py-10 text-center text-gray-400">Loading customers...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add / Edit Customer Modal -->
+<div id="customerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
+        <div class="flex justify-between items-center mb-5">
+            <h3 id="customerModalTitle" class="text-xl font-bold text-gray-800">Add Customer</h3>
+            <button onclick="closeCustomerModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <form id="customerForm" class="space-y-4">
+            <input type="hidden" id="customerId">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Name *</label>
+                <input type="text" id="customerName" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Status</label>
+                <select id="customerStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <option value="prospect">Prospect</option>
+                    <option value="active">Active</option>
+                    <option value="churned">Churned</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Notes</label>
+                <textarea id="customerNotes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"></textarea>
+            </div>
+            <div id="customerFormError" class="hidden text-red-600 text-sm font-bold"></div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button" onclick="closeCustomerModal()" class="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                <button type="submit" id="customerSubmitBtn" class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Customer Detail Drawer -->
+<div id="detailDrawer" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 flex justify-end">
+    <div class="bg-white w-full max-w-2xl h-full overflow-y-auto shadow-2xl">
+        <div class="sticky top-0 bg-white z-10 p-6 border-b border-gray-200 flex justify-between items-start">
+            <div>
+                <p class="text-xs font-bold text-gray-400 uppercase mb-1">Customer</p>
+                <h3 id="detailName" class="text-2xl font-bold text-gray-800"></h3>
+                <span id="detailStatus" class="inline-block mt-2 px-3 py-1 text-xs font-bold rounded-full"></span>
+            </div>
+            <div class="flex gap-2">
+                <button id="detailEditBtn" class="hidden text-sm text-indigo-600 hover:text-indigo-800 font-bold">Edit</button>
+                <button id="detailDeleteBtn" class="hidden text-sm text-red-600 hover:text-red-800 font-bold">Delete</button>
+                <button onclick="closeDetailDrawer()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+        </div>
+        <div class="p-6 space-y-6">
+            <div>
+                <p class="text-xs font-bold text-gray-500 uppercase mb-2">Notes</p>
+                <p id="detailNotes" class="text-sm text-gray-700 whitespace-pre-wrap">—</p>
+            </div>
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <p class="text-xs font-bold text-gray-500 uppercase">Contacts</p>
+                    <button id="addContactBtn" onclick="toggleContactForm()" class="hidden text-xs text-indigo-600 hover:text-indigo-800 font-bold">+ Add contact</button>
+                </div>
+                <form id="contactForm" class="hidden bg-gray-50 p-4 rounded-lg mb-3 space-y-2 border border-gray-200">
+                    <input type="text" id="contactName" placeholder="Name *" required class="w-full px-3 py-2 border border-gray-300 rounded text-sm">
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="email" id="contactEmail" placeholder="Email" class="px-3 py-2 border border-gray-300 rounded text-sm">
+                        <input type="text" id="contactPhone" placeholder="Phone" class="px-3 py-2 border border-gray-300 rounded text-sm">
+                    </div>
+                    <input type="text" id="contactRole" placeholder="Role (e.g. Procurement)" class="w-full px-3 py-2 border border-gray-300 rounded text-sm">
+                    <div class="flex justify-end gap-2 pt-1">
+                        <button type="button" onclick="toggleContactForm()" class="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                        <button type="submit" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-indigo-700">Add</button>
+                    </div>
+                </form>
+                <div id="contactList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let allCustomers = [];
+let isAdmin = false;
+let currentCustomerId = null;
+
+async function getAuthHeaders(jsonContent = true) {
+    let token = null;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+            try { token = JSON.parse(localStorage.getItem(key)).access_token; break; } catch (e) {}
+        }
+    }
+    if (!token) token = localStorage.getItem('evone_token');
+    const headers = { 'Authorization': `Bearer ${token}` };
+    if (jsonContent) headers['Content-Type'] = 'application/json';
+    return headers;
+}
+
+function statusBadgeClass(s) {
+    switch ((s || '').toLowerCase()) {
+        case 'active': return 'bg-green-100 text-green-700';
+        case 'prospect': return 'bg-yellow-100 text-yellow-700';
+        case 'churned': return 'bg-red-100 text-red-700';
+        default: return 'bg-gray-100 text-gray-700';
+    }
+}
+
+async function loadCustomers() {
+    const tbody = document.getElementById('customerList');
+    tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-gray-500">Fetching customers...</td></tr>`;
+
+    try {
+        const headers = await getAuthHeaders();
+        const status = document.getElementById('statusFilter').value;
+        const url = '/api/customers' + (status ? `?status=${status}` : '');
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error('Auth or server error');
+        const data = await res.json();
+
+        // Detect admin via the existing list-files endpoint (consistent with other pages)
+        if (!window._adminChecked) {
+            const r2 = await fetch('/api/list-files', { headers });
+            if (r2.ok) {
+                const d2 = await r2.json();
+                isAdmin = !!d2.is_admin;
+                const badge = document.getElementById('roleBadge');
+                badge.classList.remove('hidden');
+                if (isAdmin) {
+                    badge.textContent = 'Admin Mode';
+                    badge.classList.replace('bg-gray-100', 'bg-indigo-100');
+                    badge.classList.replace('text-gray-600', 'text-indigo-700');
+                    document.getElementById('addCustomerBtn').classList.remove('hidden');
+                } else {
+                    badge.textContent = 'Read-Only Mode';
+                    badge.classList.replace('bg-gray-100', 'bg-green-100');
+                    badge.classList.replace('text-gray-600', 'text-green-700');
+                }
+                window._adminChecked = true;
+            }
+        }
+
+        allCustomers = data.customers || [];
+        document.getElementById('searchInput').value = '';
+        renderCustomers(allCustomers);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-red-500 font-bold">Failed to load customers.</td></tr>`;
+    }
+}
+
+function renderCustomers(list) {
+    const tbody = document.getElementById('customerList');
+    tbody.innerHTML = '';
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-gray-400">No customers yet.</td></tr>`;
+        return;
+    }
+    list.forEach(c => {
+        const created = new Date(c.created_at).toLocaleDateString();
+        const notes = c.notes ? (c.notes.length > 60 ? c.notes.slice(0, 60) + '…' : c.notes) : '<span class="text-gray-300">—</span>';
+        tbody.innerHTML += `
+            <tr class="hover:bg-gray-50 transition cursor-pointer" onclick="openDetailDrawer('${c.id}')">
+                <td class="px-6 py-4 font-medium text-gray-900">${escapeHtml(c.name)}</td>
+                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-bold rounded-full ${statusBadgeClass(c.status)}">${escapeHtml(c.status || '')}</span></td>
+                <td class="px-6 py-4 text-xs text-gray-500">${notes}</td>
+                <td class="px-6 py-4 text-xs text-gray-500">${created}</td>
+                <td class="px-6 py-4 text-right">
+                    <span class="text-indigo-600 font-bold text-xs">View / Edit →</span>
+                </td>
+            </tr>`;
+    });
+}
+
+function filterCustomers() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    renderCustomers(allCustomers.filter(c => c.name.toLowerCase().includes(q)));
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// ---------- Customer modal ----------
+
+function openCustomerModal(c) {
+    document.getElementById('customerFormError').classList.add('hidden');
+    document.getElementById('customerModalTitle').textContent = c ? 'Edit Customer' : 'Add Customer';
+    document.getElementById('customerId').value = c ? c.id : '';
+    document.getElementById('customerName').value = c ? c.name : '';
+    document.getElementById('customerStatus').value = c ? (c.status || 'prospect') : 'prospect';
+    document.getElementById('customerNotes').value = c ? (c.notes || '') : '';
+    document.getElementById('customerModal').classList.remove('hidden');
+}
+
+function closeCustomerModal() {
+    document.getElementById('customerModal').classList.add('hidden');
+}
+
+document.getElementById('customerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('customerId').value;
+    const payload = {
+        name: document.getElementById('customerName').value.trim(),
+        status: document.getElementById('customerStatus').value,
+        notes: document.getElementById('customerNotes').value.trim() || null,
+    };
+    const btn = document.getElementById('customerSubmitBtn');
+    const errEl = document.getElementById('customerFormError');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(id ? `/api/customers/${id}` : '/api/customers', {
+            method: id ? 'PATCH' : 'POST',
+            headers,
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            errEl.textContent = data.message || data.detail || 'Save failed';
+            errEl.classList.remove('hidden');
+        } else {
+            closeCustomerModal();
+            await loadCustomers();
+            if (id) openDetailDrawer(id);
+        }
+    } catch (err) {
+        errEl.textContent = 'Network error';
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Save';
+    }
+});
+
+// ---------- Detail drawer ----------
+
+async function openDetailDrawer(id) {
+    currentCustomerId = id;
+    document.getElementById('detailDrawer').classList.remove('hidden');
+    document.getElementById('detailName').textContent = 'Loading...';
+    document.getElementById('detailNotes').textContent = '';
+    document.getElementById('contactList').innerHTML = '';
+    try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/customers/${id}`, { headers });
+        if (!res.ok) throw new Error('not found');
+        const c = await res.json();
+        document.getElementById('detailName').textContent = c.name;
+        const statusEl = document.getElementById('detailStatus');
+        statusEl.textContent = c.status || '';
+        statusEl.className = 'inline-block mt-2 px-3 py-1 text-xs font-bold rounded-full ' + statusBadgeClass(c.status);
+        document.getElementById('detailNotes').textContent = c.notes || '—';
+        if (isAdmin) {
+            document.getElementById('detailEditBtn').classList.remove('hidden');
+            document.getElementById('detailDeleteBtn').classList.remove('hidden');
+            document.getElementById('addContactBtn').classList.remove('hidden');
+            document.getElementById('detailEditBtn').onclick = () => openCustomerModal(c);
+            document.getElementById('detailDeleteBtn').onclick = () => deleteCustomer(c.id, c.name);
+        }
+        renderContacts(c.contacts || []);
+    } catch (e) {
+        document.getElementById('detailName').textContent = 'Failed to load.';
+    }
+}
+
+function closeDetailDrawer() {
+    document.getElementById('detailDrawer').classList.add('hidden');
+    document.getElementById('contactForm').classList.add('hidden');
+    currentCustomerId = null;
+}
+
+function renderContacts(contacts) {
+    const list = document.getElementById('contactList');
+    if (!contacts.length) {
+        list.innerHTML = `<p class="text-sm text-gray-400 italic">No contacts yet.</p>`;
+        return;
+    }
+    list.innerHTML = contacts.map(c => `
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex justify-between items-start">
+            <div class="text-sm">
+                <p class="font-bold text-gray-800">${escapeHtml(c.name)}${c.role ? ` <span class="text-xs font-normal text-gray-500">· ${escapeHtml(c.role)}</span>` : ''}</p>
+                ${c.email ? `<p class="text-xs text-gray-600">${escapeHtml(c.email)}</p>` : ''}
+                ${c.phone ? `<p class="text-xs text-gray-600">${escapeHtml(c.phone)}</p>` : ''}
+            </div>
+            ${isAdmin ? `<button onclick="deleteContact('${c.id}')" class="text-xs text-red-500 hover:text-red-700 font-bold">Remove</button>` : ''}
+        </div>
+    `).join('');
+}
+
+function toggleContactForm() {
+    const f = document.getElementById('contactForm');
+    f.classList.toggle('hidden');
+    if (!f.classList.contains('hidden')) document.getElementById('contactName').focus();
+}
+
+document.getElementById('contactForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentCustomerId) return;
+    const payload = {
+        name: document.getElementById('contactName').value.trim(),
+        email: document.getElementById('contactEmail').value.trim() || null,
+        phone: document.getElementById('contactPhone').value.trim() || null,
+        role: document.getElementById('contactRole').value.trim() || null,
+    };
+    try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/customers/${currentCustomerId}/contacts`, {
+            method: 'POST', headers, body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+            document.getElementById('contactForm').reset();
+            toggleContactForm();
+            openDetailDrawer(currentCustomerId);
+        } else {
+            alert('Failed to add contact');
+        }
+    } catch { alert('Network error'); }
+});
+
+async function deleteContact(contactId) {
+    if (!confirm('Remove this contact?')) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/contacts/${contactId}`, { method: 'DELETE', headers });
+    if (res.ok) openDetailDrawer(currentCustomerId);
+    else alert('Failed to delete');
+}
+
+async function deleteCustomer(id, name) {
+    if (!confirm(`Delete "${name}" and all their contacts? This cannot be undone.`)) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/customers/${id}`, { method: 'DELETE', headers });
+    if (res.ok) { closeDetailDrawer(); loadCustomers(); }
+    else alert('Failed to delete');
+}
+
+loadCustomers();
+</script>
+{% endblock %}
