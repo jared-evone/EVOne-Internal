@@ -289,9 +289,10 @@ function setCatFilter(cat) {
 async function loadProducts() {
     try {
         const res  = await fetch('/api/products', { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error(`Server error (${res.status})`);
         const data = await res.json();
-        if (data.error) throw new Error(data.message);
-        allProducts = data.products;
+        if (data.error || data.detail) throw new Error(data.message || data.detail);
+        allProducts = data.products || [];
 
         const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))].sort();
         buildCatPills(cats);

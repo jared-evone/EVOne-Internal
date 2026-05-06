@@ -248,17 +248,20 @@ async function onPageLoad() {
     ]);
 
     try {
+        if (!dealsRes.ok) throw new Error(`Server error (${dealsRes.status})`);
         const dd = await dealsRes.json();
-        if (dd.error) throw new Error(dd.message);
-        allDeals = dd.deals;
+        if (dd.error || dd.detail) throw new Error(dd.message || dd.detail);
+        allDeals = dd.deals || [];
     } catch (e) { showTableError(e.message); }
 
     try {
-        const cd = await customersRes.json();
-        if (!cd.error) {
-            allCustomers = cd.customers;
-            document.getElementById('customerList').innerHTML =
-                allCustomers.map(c => `<option value="${esc(c.name)}">`).join('');
+        if (customersRes.ok) {
+            const cd = await customersRes.json();
+            if (!cd.error && !cd.detail) {
+                allCustomers = cd.customers || [];
+                document.getElementById('customerList').innerHTML =
+                    allCustomers.map(c => `<option value="${esc(c.name)}">`).join('');
+            }
         }
     } catch (_) {}
 
@@ -459,11 +462,13 @@ async function submitDeal() {
         if (data.error) throw new Error(data.message);
         closeModal();
         const dd = await fetch('/api/deals', { headers: getAuthHeaders() });
-        const fresh = await dd.json();
-        if (!fresh.error) {
-            allDeals = fresh.deals;
-            renderStats(allDeals);
-            applyFilters();
+        if (dd.ok) {
+            const fresh = await dd.json();
+            if (!fresh.error && !fresh.detail) {
+                allDeals = fresh.deals || [];
+                renderStats(allDeals);
+                applyFilters();
+            }
         }
     } catch (e) {
         showModalError(e.message);

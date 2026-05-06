@@ -315,9 +315,10 @@ function setTypeFilter(type) {
 async function loadCustomers() {
     try {
         const res  = await fetch('/api/customers', { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error(`Server error (${res.status})`);
         const data = await res.json();
-        if (data.error) throw new Error(data.message);
-        allCustomers = data.customers;
+        if (data.error || data.detail) throw new Error(data.message || data.detail);
+        allCustomers = data.customers || [];
         renderStats(allCustomers);
         applyFilters();
     } catch (e) {
