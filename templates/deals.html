@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+
+{% block title %}Deals — EVOne OPS{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-full overflow-hidden bg-gray-50">
+
+    <!-- Page header -->
+    <div class="px-8 pt-6 pb-0 shrink-0">
+        <h1 class="text-2xl font-bold text-gray-900">Deals</h1>
+        <p class="text-sm text-gray-400 mt-0.5" id="pageDate"></p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="px-8 py-5 grid grid-cols-4 gap-4 shrink-0">
+
+        <!-- Pipeline Value -->
+        <div class="rounded-2xl shadow-sm p-6" style="background:#1a3a2a">
+            <p class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#6ee7b7">Pipeline Value</p>
+            <p class="text-3xl font-black text-white" id="statPipeline">—</p>
+            <p class="text-xs mt-2" style="color:#6ee7b7">Active deals</p>
+        </div>
+
+        <!-- Won This Month -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Won This Month</p>
+            <p class="text-3xl font-black text-gray-900" id="statWonMonth">—</p>
+            <p class="text-xs text-gray-400 mt-2">Revenue closed</p>
+        </div>
+
+        <!-- Open Deals -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Open Deals</p>
+            <p class="text-5xl font-black text-gray-900" id="statOpen">—</p>
+            <p class="text-xs text-gray-400 mt-2">In progress</p>
+        </div>
+
+        <!-- Win Rate -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Win Rate</p>
+            <p class="text-3xl font-black text-gray-900" id="statWinRate">—</p>
+            <p class="text-xs text-gray-400 mt-2">Won vs closed</p>
+        </div>
+
+    </div>
+
+    <!-- Table card -->
+    <div class="flex-1 flex flex-col mx-8 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0">
+
+        <!-- Toolbar -->
+        <div class="flex items-center gap-2 px-6 py-4 border-b shrink-0 flex-wrap">
+
+            <div id="stagePills" class="flex gap-1.5 flex-wrap"></div>
+
+            <div class="relative ml-1">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="searchInput" type="text" placeholder="Search deals..."
+                    class="pl-8 pr-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-evgreen outline-none w-48"
+                    oninput="applyFilters()">
+            </div>
+
+            <div class="flex-1"></div>
+
+            <button onclick="openModal()"
+                class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
+                style="background:#1a3a2a">
+                + New Deal
+            </button>
+        </div>
+
+        <!-- Table -->
+        <div class="flex-1 overflow-auto min-h-0">
+            <table class="w-full text-sm text-left">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr class="border-b">
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Title</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Customer</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Value</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stage</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Expected Close</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Created</th>
+                    </tr>
+                </thead>
+                <tbody id="dealTableBody">
+                    <tr><td colspan="7" class="text-center py-12 text-gray-400">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tableError" class="hidden px-6 py-3 bg-red-50 text-red-700 text-sm border-t shrink-0"></div>
+    </div>
+</div>
+
+<!-- New / Edit Deal Modal -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[92vh]">
+
+        <div class="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+            <h2 class="text-xl font-bold text-gray-900" id="modalTitle">New Deal</h2>
+            <button onclick="closeModal()"
+                class="w-8 h-8 flex items-center justify-center rounded-full border text-gray-400 hover:text-gray-600 hover:border-gray-400 transition text-lg leading-none">×</button>
+        </div>
+
+        <div class="overflow-y-auto px-6 pb-6 space-y-4">
+
+            <!-- Title -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Title *</label>
+                <input id="f_title" type="text"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+            </div>
+
+            <!-- Customer + Type -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Customer</label>
+                    <input id="f_customer_name" type="text" list="customerList" placeholder="Search or type name..."
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm"
+                        onchange="matchCustomer()">
+                    <datalist id="customerList"></datalist>
+                    <input type="hidden" id="f_customer_id">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Type</label>
+                    <select id="f_type"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white">
+                        <option value="">— Select type —</option>
+                        <option>Installation</option>
+                        <option>Maintenance Contract</option>
+                        <option>Supply / Hardware</option>
+                        <option>CPO Partnership</option>
+                        <option>Service Call</option>
+                        <option>Others</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Value + Stage -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Value (SGD)</label>
+                    <input id="f_value" type="number" min="0" step="0.01" value="0"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Stage</label>
+                    <select id="f_stage" onchange="toggleClosedAt()"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white">
+                        <option value="Lead">Lead</option>
+                        <option value="Proposal">Proposal</option>
+                        <option value="Negotiation">Negotiation</option>
+                        <option value="Won">Won</option>
+                        <option value="Lost">Lost</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Expected Close + Closed At -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Expected Close</label>
+                    <input id="f_expected_close" type="date"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+                <div id="closedAtRow" class="hidden">
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Closed Date</label>
+                    <input id="f_closed_at" type="date"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</label>
+                <textarea id="f_notes" rows="3"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm resize-none"></textarea>
+            </div>
+
+            <div id="modalError" class="hidden text-red-600 text-sm"></div>
+
+            <div class="flex gap-3 pt-1">
+                <button onclick="closeModal()"
+                    class="flex-1 px-4 py-2.5 border rounded-xl text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+                <button onclick="submitDeal()" id="modalSubmitBtn"
+                    class="flex-1 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition"
+                    style="background:#1a3a2a">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+const STAGES = ['All', 'Lead', 'Proposal', 'Negotiation', 'Won', 'Lost'];
+
+const STAGE_STYLE = {
+    Lead:        'bg-blue-100 text-blue-700',
+    Proposal:    'bg-purple-100 text-purple-700',
+    Negotiation: 'bg-amber-100 text-amber-700',
+    Won:         'bg-green-100 text-green-700',
+    Lost:        'bg-red-100 text-red-600',
+};
+
+let allDeals        = [];
+let allCustomers    = [];
+let activeStage     = 'All';
+let editingDealId   = null;
+
+// ---- Helpers ----
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
+}
+
+function fmtSGD(n) {
+    return 'SGD ' + Number(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function fmtSGDShort(n) {
+    if (n >= 1_000_000) return `SGD ${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)     return `SGD ${(n / 1_000).toFixed(1)}k`;
+    return `SGD ${Number(n).toFixed(0)}`;
+}
+
+function fmtDate(val) {
+    if (!val) return '—';
+    return val.split('T')[0];
+}
+
+const OPEN_STAGES = new Set(['Lead', 'Proposal', 'Negotiation']);
+
+// ---- Init ----
+
+async function onPageLoad() {
+    document.getElementById('pageDate').textContent = new Date().toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric',
+    });
+    buildStagePills();
+
+    const [dealsRes, customersRes] = await Promise.all([
+        fetch('/api/deals',     { headers: getAuthHeaders() }),
+        fetch('/api/customers', { headers: getAuthHeaders() }),
+    ]);
+
+    try {
+        const dd = await dealsRes.json();
+        if (dd.error) throw new Error(dd.message);
+        allDeals = dd.deals;
+    } catch (e) { showTableError(e.message); }
+
+    try {
+        const cd = await customersRes.json();
+        if (!cd.error) {
+            allCustomers = cd.customers;
+            document.getElementById('customerList').innerHTML =
+                allCustomers.map(c => `<option value="${esc(c.name)}">`).join('');
+        }
+    } catch (_) {}
+
+    renderStats(allDeals);
+    applyFilters();
+}
+
+// ---- Stage pills ----
+
+function buildStagePills() {
+    document.getElementById('stagePills').innerHTML = STAGES.map(s => `
+        <button onclick="setStageFilter('${s}')" id="spill_${s}"
+            class="px-3 py-1 rounded-full text-sm font-medium border transition">${s}</button>
+    `).join('');
+    updateStagePills();
+}
+
+function updateStagePills() {
+    STAGES.forEach(s => {
+        const btn = document.getElementById('spill_' + s);
+        if (!btn) return;
+        btn.style.cssText = s === activeStage
+            ? 'background:#1a3a2a;color:#fff;border-color:#1a3a2a'
+            : 'background:#fff;color:#4b5563;border-color:#e5e7eb';
+    });
+}
+
+function setStageFilter(stage) {
+    activeStage = stage;
+    updateStagePills();
+    applyFilters();
+}
+
+// ---- Stats ----
+
+function renderStats(dealList) {
+    const now       = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear  = now.getFullYear();
+
+    const pipeline = dealList
+        .filter(d => OPEN_STAGES.has(d.stage))
+        .reduce((s, d) => s + (parseFloat(d.value) || 0), 0);
+
+    const wonThisMonth = dealList
+        .filter(d => {
+            if (d.stage !== 'Won') return false;
+            const date = new Date((d.closed_at || d.updated_at || '').split('T')[0]);
+            return date.getMonth() === thisMonth && date.getFullYear() === thisYear;
+        })
+        .reduce((s, d) => s + (parseFloat(d.value) || 0), 0);
+
+    const open   = dealList.filter(d => OPEN_STAGES.has(d.stage)).length;
+    const won    = dealList.filter(d => d.stage === 'Won').length;
+    const lost   = dealList.filter(d => d.stage === 'Lost').length;
+    const closed = won + lost;
+    const winRate = closed > 0 ? ((won / closed) * 100).toFixed(1) + '%' : '—';
+
+    document.getElementById('statPipeline').textContent = fmtSGDShort(pipeline);
+    document.getElementById('statWonMonth').textContent = fmtSGDShort(wonThisMonth);
+    document.getElementById('statOpen').textContent     = open;
+    document.getElementById('statWinRate').textContent  = winRate;
+}
+
+// ---- Table ----
+
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allDeals.filter(d => {
+        if (activeStage !== 'All' && d.stage !== activeStage) return false;
+        if (search) {
+            const hay = `${d.title} ${d.customer_name || ''} ${d.type || ''}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+    renderTable(filtered);
+}
+
+function renderTable(dealList) {
+    const tbody = document.getElementById('dealTableBody');
+    if (!dealList.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-400">No deals found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = dealList.map(d => {
+        const stageCls = STAGE_STYLE[d.stage] || 'bg-gray-100 text-gray-500';
+        return `
+        <tr class="border-b hover:bg-gray-50 transition cursor-pointer"
+            onclick="handleRowClick('${esc(d.id)}')">
+            <td class="px-6 py-4 font-semibold text-gray-800">${esc(d.title)}</td>
+            <td class="px-4 py-4 text-gray-500">${esc(d.customer_name || '—')}</td>
+            <td class="px-4 py-4 text-gray-500">${esc(d.type || '—')}</td>
+            <td class="px-4 py-4 font-bold text-gray-900">${fmtSGD(d.value)}</td>
+            <td class="px-4 py-4">
+                <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${stageCls}">${esc(d.stage)}</span>
+            </td>
+            <td class="px-4 py-4 text-gray-500">${fmtDate(d.expected_close)}</td>
+            <td class="px-4 py-4 text-gray-400">${fmtDate(d.created_at)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function handleRowClick(id) {
+    const d = allDeals.find(d => d.id === id);
+    if (d) openEditModal(d);
+}
+
+function showTableError(msg) {
+    const el = document.getElementById('tableError');
+    el.textContent = 'Error: ' + msg;
+    el.classList.remove('hidden');
+}
+
+// ---- Customer matching ----
+
+function matchCustomer() {
+    const name  = document.getElementById('f_customer_name').value.trim();
+    const match = allCustomers.find(c => c.name.toLowerCase() === name.toLowerCase());
+    document.getElementById('f_customer_id').value = match ? match.id : '';
+}
+
+// ---- Modal ----
+
+function toggleClosedAt() {
+    const stage = document.getElementById('f_stage').value;
+    document.getElementById('closedAtRow').classList.toggle('hidden', stage !== 'Won' && stage !== 'Lost');
+}
+
+function resetForm() {
+    document.getElementById('f_title').value         = '';
+    document.getElementById('f_customer_name').value = '';
+    document.getElementById('f_customer_id').value   = '';
+    document.getElementById('f_type').value          = '';
+    document.getElementById('f_value').value         = '0';
+    document.getElementById('f_stage').value         = 'Lead';
+    document.getElementById('f_expected_close').value = '';
+    document.getElementById('f_closed_at').value     = '';
+    document.getElementById('f_notes').value         = '';
+    document.getElementById('modalError').classList.add('hidden');
+    document.getElementById('closedAtRow').classList.add('hidden');
+}
+
+function openModal() {
+    editingDealId = null;
+    document.getElementById('modalTitle').textContent     = 'New Deal';
+    document.getElementById('modalSubmitBtn').textContent = 'Create';
+    resetForm();
+    document.getElementById('modal').classList.remove('hidden');
+}
+
+function openEditModal(d) {
+    editingDealId = d.id;
+    document.getElementById('modalTitle').textContent     = 'Edit Deal';
+    document.getElementById('modalSubmitBtn').textContent = 'Save Changes';
+    resetForm();
+
+    document.getElementById('f_title').value          = d.title          || '';
+    document.getElementById('f_customer_name').value  = d.customer_name  || '';
+    document.getElementById('f_customer_id').value    = d.customer_id    || '';
+    document.getElementById('f_type').value           = d.type           || '';
+    document.getElementById('f_value').value          = d.value          ?? 0;
+    document.getElementById('f_stage').value          = d.stage          || 'Lead';
+    document.getElementById('f_expected_close').value = d.expected_close || '';
+    document.getElementById('f_closed_at').value      = d.closed_at      || '';
+    document.getElementById('f_notes').value          = d.notes          || '';
+    toggleClosedAt();
+
+    document.getElementById('modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.add('hidden');
+}
+
+async function submitDeal() {
+    const title = document.getElementById('f_title').value.trim();
+    if (!title) { showModalError('Title is required.'); return; }
+
+    const payload = {
+        title,
+        customer_name:  document.getElementById('f_customer_name').value.trim()  || null,
+        customer_id:    document.getElementById('f_customer_id').value            || null,
+        type:           document.getElementById('f_type').value                   || null,
+        value:          parseFloat(document.getElementById('f_value').value)      || 0,
+        stage:          document.getElementById('f_stage').value,
+        expected_close: document.getElementById('f_expected_close').value         || null,
+        closed_at:      document.getElementById('f_closed_at').value              || null,
+        notes:          document.getElementById('f_notes').value.trim()           || null,
+    };
+
+    const url    = editingDealId ? `/api/deals/${editingDealId}` : '/api/deals';
+    const method = editingDealId ? 'PUT' : 'POST';
+
+    try {
+        const res  = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.message);
+        closeModal();
+        const dd = await fetch('/api/deals', { headers: getAuthHeaders() });
+        const fresh = await dd.json();
+        if (!fresh.error) {
+            allDeals = fresh.deals;
+            renderStats(allDeals);
+            applyFilters();
+        }
+    } catch (e) {
+        showModalError(e.message);
+    }
+}
+
+function showModalError(msg) {
+    const el = document.getElementById('modalError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+{% endblock %}

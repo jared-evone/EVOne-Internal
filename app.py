@@ -19,8 +19,10 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
+from pydantic import BaseModel
+
 import config
-from services import docuseal
+from services import deals, docuseal, inventory, sales
 from services.supabase_client import (
     get_user_role_id,
     list_bucket,
@@ -99,6 +101,11 @@ async def serve_documents(request: Request):
 @app.get("/analytics")
 async def serve_analytics(request: Request):
     return templates.TemplateResponse(request=request, name="analytics.html")
+
+
+@app.get("/customers")
+async def serve_customers(request: Request):
+    return templates.TemplateResponse(request=request, name="customers.html")
 
 
 @app.get("/config")
@@ -470,5 +477,230 @@ async def process_pdf(files: List[UploadFile] = File(...), user: dict = Depends(
             media_type="application/zip",
             headers={"Content-Disposition": "attachment; filename=Monthly_PDF_Reports.zip"},
         )
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 6. CRM — Customers
+# ==========================================
+class CustomerCreate(BaseModel):
+    name: str
+    type: str = "Residential"
+    attention_to: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    lead_source: str | None = None
+    status: str = "active"
+    joined_at: str | None = None
+    notes: str | None = None
+
+
+@app.get("/api/customers")
+async def get_customers(user: dict = Depends(get_current_user)):
+    try:
+        return {"customers": sales.list_customers()}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/customers")
+async def post_customer(data: CustomerCreate, user: dict = Depends(get_current_user)):
+    try:
+        customer = sales.create_customer(data.model_dump(exclude_none=True))
+        return {"customer": customer}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+class CustomerUpdate(BaseModel):
+    name: str | None = None
+    type: str | None = None
+    attention_to: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    lead_source: str | None = None
+    status: str | None = None
+    joined_at: str | None = None
+    notes: str | None = None
+
+
+@app.get("/api/customers/{customer_id}")
+async def get_customer(customer_id: str, user: dict = Depends(get_current_user)):
+    try:
+        customer = sales.get_customer(customer_id)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        return {"customer": customer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/customers/{customer_id}")
+async def put_customer(customer_id: str, data: CustomerUpdate, user: dict = Depends(get_current_user)):
+    try:
+        payload = data.model_dump(exclude_none=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        customer = sales.update_customer(customer_id, payload)
+        return {"customer": customer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 7. Inventory & Products
+# ==========================================
+class ProductCreate(BaseModel):
+    sku: str
+    name: str
+    category: str | None = None
+    cost: float = 0.0
+    price: float = 0.0
+    stock_qty: int = 0
+    reorder_level: int = 0
+    supplier: str | None = None
+    storage_location: str | None = None
+
+
+class ProductUpdate(BaseModel):
+    sku: str | None = None
+    name: str | None = None
+    category: str | None = None
+    cost: float | None = None
+    price: float | None = None
+    stock_qty: int | None = None
+    reorder_level: int | None = None
+    supplier: str | None = None
+    storage_location: str | None = None
+
+
+@app.get("/inventory")
+async def serve_inventory(request: Request):
+    return templates.TemplateResponse(request=request, name="inventory.html")
+
+
+@app.get("/api/products")
+async def get_products(user: dict = Depends(get_current_user)):
+    try:
+        return {"products": inventory.list_products()}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/products")
+async def post_product(data: ProductCreate, user: dict = Depends(get_current_user)):
+    try:
+        product = inventory.create_product(data.model_dump(exclude_none=True))
+        return {"product": product}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/products/{product_id}")
+async def get_product(product_id: str, user: dict = Depends(get_current_user)):
+    try:
+        product = inventory.get_product(product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return {"product": product}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/products/{product_id}")
+async def put_product(product_id: str, data: ProductUpdate, user: dict = Depends(get_current_user)):
+    try:
+        payload = data.model_dump(exclude_none=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        product = inventory.update_product(product_id, payload)
+        return {"product": product}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 8. Deals
+# ==========================================
+class DealCreate(BaseModel):
+    title: str
+    customer_id: str | None = None
+    customer_name: str | None = None
+    type: str | None = None
+    value: float = 0.0
+    stage: str = "Lead"
+    expected_close: str | None = None
+    closed_at: str | None = None
+    notes: str | None = None
+
+
+class DealUpdate(BaseModel):
+    title: str | None = None
+    customer_id: str | None = None
+    customer_name: str | None = None
+    type: str | None = None
+    value: float | None = None
+    stage: str | None = None
+    expected_close: str | None = None
+    closed_at: str | None = None
+    notes: str | None = None
+
+
+@app.get("/deals")
+async def serve_deals(request: Request):
+    return templates.TemplateResponse(request=request, name="deals.html")
+
+
+@app.get("/api/deals")
+async def get_deals(user: dict = Depends(get_current_user)):
+    try:
+        return {"deals": deals.list_deals()}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/deals")
+async def post_deal(data: DealCreate, user: dict = Depends(get_current_user)):
+    try:
+        deal = deals.create_deal(data.model_dump(exclude_none=True))
+        return {"deal": deal}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/deals/{deal_id}")
+async def get_deal(deal_id: str, user: dict = Depends(get_current_user)):
+    try:
+        deal = deals.get_deal(deal_id)
+        if not deal:
+            raise HTTPException(status_code=404, detail="Deal not found")
+        return {"deal": deal}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/deals/{deal_id}")
+async def put_deal(deal_id: str, data: DealUpdate, user: dict = Depends(get_current_user)):
+    try:
+        payload = data.model_dump(exclude_none=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        deal = deals.update_deal(deal_id, payload)
+        return {"deal": deal}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"error": True, "message": str(e)}

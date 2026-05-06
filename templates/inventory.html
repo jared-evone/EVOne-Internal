@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory & Products — EVOne OPS{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-full overflow-hidden bg-gray-50">
+
+    <!-- Page header -->
+    <div class="px-8 pt-6 pb-0 shrink-0">
+        <h1 class="text-2xl font-bold text-gray-900">Inventory & Products</h1>
+        <p class="text-sm text-gray-400 mt-0.5" id="pageDate"></p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="px-8 py-5 grid grid-cols-4 gap-4 shrink-0">
+
+        <!-- Total SKUs -->
+        <div class="rounded-2xl shadow-sm p-6" style="background:#1a3a2a">
+            <p class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#6ee7b7">Total SKUs</p>
+            <p class="text-5xl font-black" style="color:#fbbf24" id="statSkus">—</p>
+            <p class="text-xs mt-2" style="color:#6ee7b7">Across all categories</p>
+        </div>
+
+        <!-- Stock Value -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stock Value (Cost)</p>
+            <p class="text-3xl font-black text-gray-900" id="statValue">—</p>
+            <p class="text-xs text-gray-400 mt-2">At cost</p>
+        </div>
+
+        <!-- Low / Out of Stock -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Low / Out of Stock</p>
+            <p class="text-5xl font-black text-gray-900" id="statLow">—</p>
+            <p class="text-xs text-gray-400 mt-2">Needs reorder</p>
+        </div>
+
+        <!-- Avg Gross Margin -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Avg Gross Margin</p>
+            <p class="text-3xl font-black text-gray-900" id="statMargin">—</p>
+            <p class="text-xs text-gray-400 mt-2">Selling vs cost</p>
+        </div>
+
+    </div>
+
+    <!-- Table card -->
+    <div class="flex-1 flex flex-col mx-8 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0">
+
+        <!-- Toolbar -->
+        <div class="flex items-center gap-2 px-6 py-4 border-b shrink-0 flex-wrap">
+
+            <div id="catPills" class="flex gap-1.5 flex-wrap"></div>
+
+            <div class="relative ml-1">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="searchInput" type="text" placeholder="Search products / SKU..."
+                    class="pl-8 pr-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-evgreen outline-none w-52"
+                    oninput="applyFilters()">
+            </div>
+
+            <div class="flex-1"></div>
+
+            <button onclick="openModal()"
+                class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
+                style="background:#1a3a2a">
+                + New Product
+            </button>
+        </div>
+
+        <!-- Table -->
+        <div class="flex-1 overflow-auto min-h-0">
+            <table class="w-full text-sm text-left">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr class="border-b">
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">SKU</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Name</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Category</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stock</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Cost</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Price</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Margin</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="productTableBody">
+                    <tr><td colspan="8" class="text-center py-12 text-gray-400">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tableError" class="hidden px-6 py-3 bg-red-50 text-red-700 text-sm border-t shrink-0"></div>
+    </div>
+</div>
+
+<!-- New / Edit Product Modal -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[92vh]">
+
+        <div class="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+            <h2 class="text-xl font-bold text-gray-900" id="modalTitle">New Product</h2>
+            <button onclick="closeModal()"
+                class="w-8 h-8 flex items-center justify-center rounded-full border text-gray-400 hover:text-gray-600 hover:border-gray-400 transition text-lg leading-none">×</button>
+        </div>
+
+        <div class="overflow-y-auto px-6 pb-6 space-y-4">
+
+            <!-- Name -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Name</label>
+                <input id="f_name" type="text"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+            </div>
+
+            <!-- SKU + Category -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">SKU</label>
+                    <input id="f_sku" type="text"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Category</label>
+                    <input id="f_category" type="text" list="categoryList" placeholder="Select or type..."
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                    <datalist id="categoryList"></datalist>
+                </div>
+            </div>
+
+            <!-- Cost + Price -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Cost (SGD)</label>
+                    <input id="f_cost" type="number" min="0" step="0.01" value="0"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm"
+                        oninput="updateMarginDisplay()">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Price (SGD)</label>
+                    <input id="f_price" type="number" min="0" step="0.01" value="0"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm"
+                        oninput="updateMarginDisplay()">
+                </div>
+            </div>
+
+            <!-- Margin display -->
+            <div class="px-4 py-3 rounded-xl text-sm" style="background:#f0fdf4">
+                Margin: <strong id="marginPct" style="color:#166534">0.0%</strong>
+            </div>
+
+            <!-- On-hand Qty + Reorder Level -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">On-Hand Qty</label>
+                    <input id="f_stock" type="number" min="0" step="1" value="0"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Reorder Level</label>
+                    <input id="f_reorder" type="number" min="0" step="1" value="0"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+            </div>
+
+            <!-- Supplier + Storage Location -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Supplier</label>
+                    <select id="f_supplier"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white">
+                        <option value="">Select supplier...</option>
+                        <option>Delta Electronics</option>
+                        <option>ABB</option>
+                        <option>Schneider Electric</option>
+                        <option>Legrand</option>
+                        <option>EVOne Owned</option>
+                        <option>Others</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Storage Location</label>
+                    <input id="f_location" type="text"
+                        class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+                </div>
+            </div>
+
+            <div id="modalError" class="hidden text-red-600 text-sm"></div>
+
+            <div class="flex gap-3 pt-1">
+                <button onclick="closeModal()"
+                    class="flex-1 px-4 py-2.5 border rounded-xl text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+                <button onclick="submitProduct()" id="modalSubmitBtn"
+                    class="flex-1 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition"
+                    style="background:#1a3a2a">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+let allProducts      = [];
+let activeCatFilter  = 'All';
+let editingProductId = null;
+
+// ---- Helpers ----
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
+}
+
+function fmtRM(n) {
+    return 'SGD ' + Number(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function fmtRMShort(n) {
+    if (n >= 1_000_000) return `SGD ${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000)     return `SGD ${(n / 1_000).toFixed(1)}k`;
+    return `SGD ${Number(n).toFixed(0)}`;
+}
+
+function calcMargin(cost, price) {
+    const c = parseFloat(cost) || 0;
+    const p = parseFloat(price) || 0;
+    return p > 0 ? ((p - c) / p) * 100 : 0;
+}
+
+function stockStatus(qty, reorder) {
+    const q = parseInt(qty) || 0;
+    const r = parseInt(reorder) || 0;
+    if (q <= 0)   return 'out';
+    if (q <= r)   return 'low';
+    return 'in';
+}
+
+function stockBarPct(qty, reorder) {
+    const q = parseInt(qty) || 0;
+    const r = parseInt(reorder) || 0;
+    if (q <= 0)  return 0;
+    if (r <= 0)  return 100;
+    return Math.min((q / r) * 100, 100);
+}
+
+function generateSKU() {
+    return 'SKU-' + Math.floor(10000 + Math.random() * 90000);
+}
+
+// ---- Init ----
+
+async function onPageLoad() {
+    document.getElementById('pageDate').textContent = new Date().toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric',
+    });
+    await loadProducts();
+}
+
+// ---- Category pills ----
+
+function buildCatPills(categories) {
+    const all = ['All', ...categories];
+    document.getElementById('catPills').innerHTML = all.map(c => `
+        <button onclick="setCatFilter('${esc(c)}')" id="cpill_${esc(c)}"
+            class="px-3 py-1 rounded-full text-sm font-medium border transition">${esc(c)}</button>
+    `).join('');
+    updateCatPills();
+}
+
+function updateCatPills() {
+    document.querySelectorAll('[id^="cpill_"]').forEach(btn => {
+        const label = btn.textContent.trim();
+        btn.style.cssText = label === activeCatFilter
+            ? 'background:#1a3a2a;color:#fff;border-color:#1a3a2a'
+            : 'background:#fff;color:#4b5563;border-color:#e5e7eb';
+    });
+}
+
+function setCatFilter(cat) {
+    activeCatFilter = cat;
+    updateCatPills();
+    applyFilters();
+}
+
+// ---- Data ----
+
+async function loadProducts() {
+    try {
+        const res  = await fetch('/api/products', { headers: getAuthHeaders() });
+        const data = await res.json();
+        if (data.error) throw new Error(data.message);
+        allProducts = data.products;
+
+        const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))].sort();
+        buildCatPills(cats);
+        syncCategoryDatalist(cats);
+        renderStats(allProducts);
+        applyFilters();
+    } catch (e) {
+        showTableError(e.message);
+    }
+}
+
+function syncCategoryDatalist(cats) {
+    document.getElementById('categoryList').innerHTML =
+        cats.map(c => `<option value="${esc(c)}">`).join('');
+}
+
+function renderStats(products) {
+    const totalValue = products.reduce((s, p) => s + (parseFloat(p.cost) || 0) * (parseInt(p.stock_qty) || 0), 0);
+    const needsReorder = products.filter(p => stockStatus(p.stock_qty, p.reorder_level) !== 'in').length;
+    const margins = products
+        .map(p => calcMargin(p.cost, p.price))
+        .filter(m => m > 0);
+    const avgMargin = margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+
+    document.getElementById('statSkus').textContent   = products.length;
+    document.getElementById('statValue').textContent  = fmtRMShort(totalValue);
+    document.getElementById('statLow').textContent    = needsReorder;
+    document.getElementById('statMargin').textContent = avgMargin.toFixed(1) + '%';
+}
+
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+
+    const filtered = allProducts.filter(p => {
+        if (activeCatFilter !== 'All' && p.category !== activeCatFilter) return false;
+        if (search) {
+            const hay = `${p.sku} ${p.name} ${p.category || ''}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+
+    renderTable(filtered);
+}
+
+function renderTable(products) {
+    const tbody = document.getElementById('productTableBody');
+    if (!products.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12 text-gray-400">No products found.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = products.map(p => {
+        const status  = stockStatus(p.stock_qty, p.reorder_level);
+        const barPct  = stockBarPct(p.stock_qty, p.reorder_level);
+        const margin  = calcMargin(p.cost, p.price);
+
+        const barColor  = status === 'in'  ? '#16a34a' : status === 'low' ? '#d97706' : '#dc2626';
+        const badgeCls  = status === 'in'  ? 'bg-green-100 text-green-700'
+                        : status === 'low' ? 'bg-amber-100 text-amber-700'
+                        :                   'bg-red-100 text-red-600';
+        const badgeText = status === 'in'  ? 'In Stock'
+                        : status === 'low' ? 'Low Stock'
+                        :                   'Out of Stock';
+
+        return `
+        <tr class="border-b hover:bg-gray-50 transition cursor-pointer"
+            onclick="handleRowClick('${esc(p.id)}')">
+            <td class="px-6 py-4 font-bold text-sm" style="color:#1a3a2a">${esc(p.sku)}</td>
+            <td class="px-4 py-4 font-medium text-gray-800">${esc(p.name)}</td>
+            <td class="px-4 py-4 text-gray-500">${esc(p.category || '—')}</td>
+            <td class="px-4 py-4">
+                <span class="text-gray-700 font-medium text-xs">${parseInt(p.stock_qty)||0} / reorder ${parseInt(p.reorder_level)||0}</span>
+                <div class="mt-1.5 w-28 bg-gray-100 rounded-full h-1.5">
+                    <div class="h-1.5 rounded-full" style="width:${barPct}%;background:${barColor}"></div>
+                </div>
+            </td>
+            <td class="px-4 py-4 text-gray-500">${fmtRM(p.cost)}</td>
+            <td class="px-4 py-4 font-bold text-gray-900">${fmtRM(p.price)}</td>
+            <td class="px-4 py-4 text-gray-600">${margin.toFixed(1)}%</td>
+            <td class="px-4 py-4">
+                <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeCls}">${badgeText}</span>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function handleRowClick(id) {
+    const p = allProducts.find(p => p.id === id);
+    if (p) openEditModal(p);
+}
+
+function showTableError(msg) {
+    const el = document.getElementById('tableError');
+    el.textContent = 'Error: ' + msg;
+    el.classList.remove('hidden');
+}
+
+// ---- Modal ----
+
+function updateMarginDisplay() {
+    const cost  = parseFloat(document.getElementById('f_cost').value)  || 0;
+    const price = parseFloat(document.getElementById('f_price').value) || 0;
+    const m     = price > 0 ? ((price - cost) / price * 100).toFixed(1) : '0.0';
+    document.getElementById('marginPct').textContent = m + '%';
+}
+
+function openModal() {
+    editingProductId = null;
+    document.getElementById('modalTitle').textContent     = 'New Product';
+    document.getElementById('modalSubmitBtn').textContent = 'Create';
+    document.getElementById('f_name').value     = '';
+    document.getElementById('f_sku').value      = generateSKU();
+    document.getElementById('f_category').value = '';
+    document.getElementById('f_cost').value     = '0';
+    document.getElementById('f_price').value    = '0';
+    document.getElementById('f_stock').value    = '0';
+    document.getElementById('f_reorder').value  = '0';
+    document.getElementById('f_supplier').value = '';
+    document.getElementById('f_location').value = '';
+    updateMarginDisplay();
+    document.getElementById('modalError').classList.add('hidden');
+    document.getElementById('modal').classList.remove('hidden');
+}
+
+function openEditModal(p) {
+    editingProductId = p.id;
+    document.getElementById('modalTitle').textContent     = 'Edit Product';
+    document.getElementById('modalSubmitBtn').textContent = 'Save Changes';
+    document.getElementById('f_name').value     = p.name             || '';
+    document.getElementById('f_sku').value      = p.sku              || '';
+    document.getElementById('f_category').value = p.category         || '';
+    document.getElementById('f_cost').value     = p.cost             ?? 0;
+    document.getElementById('f_price').value    = p.price            ?? 0;
+    document.getElementById('f_stock').value    = p.stock_qty        ?? 0;
+    document.getElementById('f_reorder').value  = p.reorder_level    ?? 0;
+    document.getElementById('f_supplier').value = p.supplier         || '';
+    document.getElementById('f_location').value = p.storage_location || '';
+    updateMarginDisplay();
+    document.getElementById('modalError').classList.add('hidden');
+    document.getElementById('modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('modal').classList.add('hidden');
+}
+
+async function submitProduct() {
+    const name = document.getElementById('f_name').value.trim();
+    const sku  = document.getElementById('f_sku').value.trim();
+    if (!name) { showModalError('Name is required.'); return; }
+    if (!sku)  { showModalError('SKU is required.');  return; }
+
+    const payload = {
+        name,
+        sku,
+        category:         document.getElementById('f_category').value.trim() || null,
+        cost:             parseFloat(document.getElementById('f_cost').value)    || 0,
+        price:            parseFloat(document.getElementById('f_price').value)   || 0,
+        stock_qty:        parseInt(document.getElementById('f_stock').value)     || 0,
+        reorder_level:    parseInt(document.getElementById('f_reorder').value)   || 0,
+        supplier:         document.getElementById('f_supplier').value            || null,
+        storage_location: document.getElementById('f_location').value.trim()    || null,
+    };
+
+    const url    = editingProductId ? `/api/products/${editingProductId}` : '/api/products';
+    const method = editingProductId ? 'PUT' : 'POST';
+
+    try {
+        const res  = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.message);
+        closeModal();
+        await loadProducts();
+    } catch (e) {
+        showModalError(e.message);
+    }
+}
+
+function showModalError(msg) {
+    const el = document.getElementById('modalError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+{% endblock %}
