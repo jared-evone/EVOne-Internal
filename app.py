@@ -554,6 +554,14 @@ async def put_customer(customer_id: str, data: CustomerUpdate, user: dict = Depe
         return {"error": True, "message": str(e)}
 
 
+@app.delete("/api/customers/{customer_id}")
+async def delete_customer(customer_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        return sales.delete_customer(customer_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
 # ==========================================
 # 7. Inventory & Products
 # ==========================================
@@ -630,6 +638,14 @@ async def put_product(product_id: str, data: ProductUpdate, user: dict = Depends
         return {"error": True, "message": str(e)}
 
 
+@app.delete("/api/products/{product_id}")
+async def delete_product(product_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        return inventory.delete_product(product_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
 # ==========================================
 # 8. Deals
 # ==========================================
@@ -702,5 +718,13 @@ async def put_deal(deal_id: str, data: DealUpdate, user: dict = Depends(get_curr
         return {"deal": deal}
     except HTTPException:
         raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/deals/{deal_id}")
+async def delete_deal(deal_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        return deals.delete_deal(deal_id)
     except Exception as e:
         return {"error": True, "message": str(e)}

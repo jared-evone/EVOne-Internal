@@ -47,3 +47,8 @@ def update_product(product_id: str, payload: dict) -> dict:
         .execute()
     )
     return res.data[0] if res.data else {}
+
+
+def delete_product(product_id: str) -> dict:
+    supabase_admin.schema(_SCHEMA).table("products").delete().eq("id", product_id).execute()
+    return {"success": True}

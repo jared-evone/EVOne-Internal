@@ -47,3 +47,8 @@ def update_deal(deal_id: str, payload: dict) -> dict:
         .execute()
     )
     return res.data[0] if res.data else {}
+
+
+def delete_deal(deal_id: str) -> dict:
+    supabase_admin.schema(_SCHEMA).table("deals").delete().eq("id", deal_id).execute()
+    return {"success": True}

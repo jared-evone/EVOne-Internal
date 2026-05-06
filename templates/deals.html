@@ -70,11 +70,23 @@
             </button>
         </div>
 
+        <!-- Bulk action bar -->
+        <div id="bulkBar" class="hidden items-center gap-3 px-6 py-2.5 border-b shrink-0" style="background:#fef3c7">
+            <span class="text-sm font-semibold text-amber-800" id="bulkCount"></span>
+            <div class="flex-1"></div>
+            <button onclick="deleteSelected()"
+                class="text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition"
+                style="background:#dc2626">Delete Selected</button>
+        </div>
+
         <!-- Table -->
         <div class="flex-1 overflow-auto min-h-0">
             <table class="w-full text-sm text-left">
                 <thead class="sticky top-0 bg-white z-10">
                     <tr class="border-b">
+                        <th class="w-10 px-5 py-3">
+                            <input type="checkbox" id="checkAll" class="rounded" onchange="toggleAll(this)">
+                        </th>
                         <th class="px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Title</th>
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Customer</th>
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
@@ -85,7 +97,7 @@
                     </tr>
                 </thead>
                 <tbody id="dealTableBody">
-                    <tr><td colspan="7" class="text-center py-12 text-gray-400">Loading...</td></tr>
+                    <tr><td colspan="8" class="text-center py-12 text-gray-400">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -344,7 +356,7 @@ function applyFilters() {
 function renderTable(dealList) {
     const tbody = document.getElementById('dealTableBody');
     if (!dealList.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-400">No deals found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12 text-gray-400">No deals found.</td></tr>';
         return;
     }
     tbody.innerHTML = dealList.map(d => {
@@ -352,6 +364,9 @@ function renderTable(dealList) {
         return `
         <tr class="border-b hover:bg-gray-50 transition cursor-pointer"
             onclick="handleRowClick('${esc(d.id)}')">
+            <td class="px-5 py-4" onclick="event.stopPropagation()">
+                <input type="checkbox" class="row-check rounded" value="${esc(d.id)}" onchange="updateBulkBar()">
+            </td>
             <td class="px-6 py-4 font-semibold text-gray-800">${esc(d.title)}</td>
             <td class="px-4 py-4 text-gray-500">${esc(d.customer_name || '—')}</td>
             <td class="px-4 py-4 text-gray-500">${esc(d.type || '—')}</td>
@@ -368,6 +383,52 @@ function renderTable(dealList) {
 function handleRowClick(id) {
     const d = allDeals.find(d => d.id === id);
     if (d) openEditModal(d);
+}
+
+function toggleAll(cb) {
+    document.querySelectorAll('.row-check').forEach(c => { c.checked = cb.checked; });
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    const all     = document.querySelectorAll('.row-check');
+    const bar     = document.getElementById('bulkBar');
+    const ca      = document.getElementById('checkAll');
+    if (checked.length > 0) {
+        document.getElementById('bulkCount').textContent = `${checked.length} selected`;
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+    if (ca) {
+        ca.indeterminate = checked.length > 0 && checked.length < all.length;
+        ca.checked       = all.length > 0 && checked.length === all.length;
+    }
+}
+
+async function deleteSelected() {
+    const ids = [...document.querySelectorAll('.row-check:checked')].map(c => c.value);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} deal(s)? This cannot be undone.`)) return;
+    try {
+        await Promise.all(ids.map(id =>
+            fetch(`/api/deals/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
+        ));
+        const dd = await fetch('/api/deals', { headers: getAuthHeaders() });
+        if (dd.ok) {
+            const fresh = await dd.json();
+            if (!fresh.error && !fresh.detail) {
+                allDeals = fresh.deals || [];
+                renderStats(allDeals);
+                applyFilters();
+            }
+        }
+    } catch (e) {
+        showTableError(e.message);
+    }
 }
 
 function showTableError(msg) {

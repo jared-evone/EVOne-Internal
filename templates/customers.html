@@ -72,6 +72,15 @@
             </button>
         </div>
 
+        <!-- Bulk action bar -->
+        <div id="bulkBar" class="hidden items-center gap-3 px-6 py-2.5 border-b shrink-0" style="background:#fef3c7">
+            <span class="text-sm font-semibold text-amber-800" id="bulkCount"></span>
+            <div class="flex-1"></div>
+            <button onclick="deleteSelected()"
+                class="text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition"
+                style="background:#dc2626">Delete Selected</button>
+        </div>
+
         <!-- Table -->
         <div class="flex-1 overflow-auto min-h-0">
             <table class="w-full text-sm text-left">
@@ -403,7 +412,7 @@ function renderTable(customers) {
         <tr class="border-b hover:bg-gray-50 transition cursor-pointer"
             onclick="handleRowClick(event, '${esc(c.id)}')">
             <td class="px-5 py-3.5" onclick="event.stopPropagation()">
-                <input type="checkbox" class="row-check rounded" value="${esc(c.id)}">
+                <input type="checkbox" class="row-check rounded" value="${esc(c.id)}" onchange="updateBulkBar()">
             </td>
             <td class="px-4 py-3.5">
                 <div class="flex items-center gap-3">
@@ -429,6 +438,40 @@ function handleRowClick(event, id) {
 
 function toggleAll(cb) {
     document.querySelectorAll('.row-check').forEach(c => { c.checked = cb.checked; });
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    const all     = document.querySelectorAll('.row-check');
+    const bar     = document.getElementById('bulkBar');
+    const ca      = document.getElementById('checkAll');
+    if (checked.length > 0) {
+        document.getElementById('bulkCount').textContent = `${checked.length} selected`;
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+    if (ca) {
+        ca.indeterminate = checked.length > 0 && checked.length < all.length;
+        ca.checked       = all.length > 0 && checked.length === all.length;
+    }
+}
+
+async function deleteSelected() {
+    const ids = [...document.querySelectorAll('.row-check:checked')].map(c => c.value);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} customer(s)? This cannot be undone.`)) return;
+    try {
+        await Promise.all(ids.map(id =>
+            fetch(`/api/customers/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
+        ));
+        await loadCustomers();
+    } catch (e) {
+        showTableError(e.message);
+    }
 }
 
 function showTableError(msg) {
