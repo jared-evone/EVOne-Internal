@@ -125,18 +125,6 @@
 <script>
 let globalSubmissions = [];
 
-async function getAuthHeaders() {
-    let token = null;
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
-            try { token = JSON.parse(localStorage.getItem(key)).access_token; break; } catch (e) {}
-        }
-    }
-    if (!token) token = localStorage.getItem('supabase.auth.token') || localStorage.getItem('sb-access-token');
-    return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
-
 function switchTab(tab) {
     const createTab = document.getElementById('tab-create');
     const traceTab = document.getElementById('tab-trace');
@@ -187,14 +175,17 @@ function toggleInputs() {
 async function fetchSubmissionsFromAPI() {
     const tbody = document.getElementById('submissionList');
     tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">Fetching data...</td></tr>`;
-    
-    const headers = await getAuthHeaders();
+
     try {
-        const res = await fetch('/api/get-signing-submissions?t=' + new Date().getTime(), { headers });
+        const res = await fetch('/api/get-signing-submissions?t=' + new Date().getTime(), { headers: getAuthHeaders() });
+        if (!res.ok) {
+            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-red-500">Session expired (${res.status}). Please log out and log back in.</td></tr>`;
+            return;
+        }
         const rawData = await res.json();
         globalSubmissions = Array.isArray(rawData) ? rawData : (rawData.data || []);
-        applyFilters(); 
-    } catch(e) { 
+        applyFilters();
+    } catch(e) {
         console.error(e);
         tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-red-500">Network Error. Check console.</td></tr>`;
     }

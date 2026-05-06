@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+{% endblock %}
+
 {% block title %}Monthly Billing | EVOne{% endblock %}
 
 {% block content %}
@@ -546,26 +550,29 @@ window.saveAllToSupabase = async function(btn) {
         const rates = [];
         document.querySelectorAll('#rateTableBody tr').forEach(row => {
             const tds = row.querySelectorAll('td');
-            if (tds.length < 4) return; 
-            const company = tds[0].innerText.trim();
-            if (company) rates.push({ company_name: company, base_rate: parseFloat(tds[1].innerText) || 0, threshold_kwh: tds[2].innerText.trim() === '' ? null : parseFloat(tds[2].innerText), discounted_rate: parseFloat(tds[3].innerText) || 0 });
+            if (tds.length < 4) return;
+            const company = tds[0].textContent.trim();
+            if (company) rates.push({ company_name: company, base_rate: parseFloat(tds[1].textContent) || 0, threshold_kwh: tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent), discounted_rate: parseFloat(tds[3].textContent) || 0 });
         });
 
         const gps = [];
         document.querySelectorAll('#gpTableBody tr').forEach(row => {
             const tds = row.querySelectorAll('td');
             if (tds.length < 2) return;
-            const plate = tds[0].innerText.trim().toUpperCase();
-            if (plate) gps.push({ vehicle_plate: plate, company_name: tds[1].innerText.trim() });
+            const plate = tds[0].textContent.trim().toUpperCase();
+            if (plate) gps.push({ vehicle_plate: plate, company_name: tds[1].textContent.trim() });
         });
 
         const sps = [];
         document.querySelectorAll('#spTableBody tr').forEach(row => {
             const tds = row.querySelectorAll('td');
             if (tds.length < 2) return;
-            const email = tds[0].innerText.trim().toLowerCase();
-            if (email) sps.push({ driver_email: email, company_name: tds[1].innerText.trim() });
+            const email = tds[0].textContent.trim().toLowerCase();
+            if (email) sps.push({ driver_email: email, company_name: tds[1].textContent.trim() });
         });
+
+        if (gps.length === 0 && !confirm("GP Fleet CRM table is empty — this will DELETE ALL existing GP records from the cloud. Continue?")) return;
+        if (sps.length === 0 && !confirm("SP Drivers CRM table is empty — this will DELETE ALL existing SP records from the cloud. Continue?")) return;
 
         const { error: delErr1 } = await supabaseClient.schema('evone_billing').from('pricing_rates').delete().not('company_name', 'is', null);
         if (delErr1) throw new Error(delErr1.message);

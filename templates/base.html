@@ -9,6 +9,7 @@
         tailwind.config = { theme: { extend: { colors: { evgreen: '#00ad5f', sidebar: '#111827' } } } }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    {% block extra_scripts %}{% endblock %}
     <style>
         .tab-content.hidden { display: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -79,6 +80,21 @@
             const res = await fetch('/config');
             const config = await res.json();
             supabaseClient = supabase.createClient(config.supabase_url, config.supabase_key);
+
+            // Keep evone_token in sync with Supabase's own auto-refresh cycle
+            supabaseClient.auth.onAuthStateChange((_event, session) => {
+                if (session && session.access_token) {
+                    localStorage.setItem('evone_token', session.access_token);
+                }
+            });
+
+            // Immediately refresh so evone_token is valid before the first API call
+            try {
+                const { data: { session } } = await supabaseClient.auth.getSession();
+                if (session && session.access_token) {
+                    localStorage.setItem('evone_token', session.access_token);
+                }
+            } catch (_) {}
         }
 
         function checkAuth() {
