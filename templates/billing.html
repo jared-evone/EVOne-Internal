@@ -57,12 +57,12 @@
         <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
             <div>
                 <h2 class="text-lg font-bold text-gray-800">System Mapping Console</h2>
-                <p class="text-sm text-gray-500 mt-1">Manage corporate rates and vehicle-driver associations. (Changes auto-sync across sessions)</p>
+                <p class="text-sm text-gray-500 mt-1">Changes are saved to the cloud automatically.</p>
             </div>
-            <button onclick="window.saveAllToSupabase(this)" class="bg-sidebar text-white py-2.5 px-6 rounded-xl font-bold shadow-md hover:bg-black transition flex items-center">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-                Sync to Cloud
-            </button>
+            <div id="saveStatus" class="flex items-center gap-2 text-sm">
+                <span id="saveStatusDot" class="w-2 h-2 rounded-full" style="background:#d1d5db"></span>
+                <span id="saveStatusText" class="text-gray-400">Ready</span>
+            </div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -304,6 +304,7 @@ window.generateActionButtons = function(isEditing) {
 
 window.editRow = function(btn) {
     const tr = btn.closest('tr');
+    tr.dataset.origKey = tr.cells[0].textContent.trim();
     tr.classList.add('editing-row');
     
     const tds = tr.querySelectorAll('td:not(:last-child)');
@@ -347,14 +348,25 @@ window.saveRow = function(btn) {
     
     tr.lastElementChild.innerHTML = window.generateActionButtons(false);
     if(tbodyId === 'rateTableBody') window.syncCompanyList();
-    
+
     const type = tbodyId === 'gpTableBody' ? 'gp' : (tbodyId === 'spTableBody' ? 'sp' : null);
     if(type) window.filterTable(type);
+
+    const origKey = tr.dataset.origKey || '';
+    delete tr.dataset.origKey;
+    window._autoSave(tbodyId, tr, origKey);
 };
 
 window.deleteRowPrompt = function(btn) {
-    if(confirm("Delete this entry? Click 'Sync to Cloud' later to finalize.")) {
-        btn.closest('tr').remove();
+    if(confirm("Delete this entry?")) {
+        const tr = btn.closest('tr');
+        const tbodyId = tr.closest('tbody').id;
+        const keyCell = tr.cells[0];
+        const key = keyCell.querySelector('input')
+            ? keyCell.querySelector('input').value.trim()
+            : keyCell.textContent.trim();
+        tr.remove();
+        window._autoDelete(tbodyId, key);
     }
 };
 
@@ -428,8 +440,20 @@ window.submitBatchModal = function() {
         tbody.prepend(tr);
     });
 
+    const savedBatchType = window.currentBatchType;
     window.closeBatchModal();
-    window.filterTable(window.currentBatchType); 
+    window.filterTable(savedBatchType);
+
+    const table = savedBatchType === 'gp' ? 'gp_crm' : 'sp_crm';
+    const toInsert = items.map(item => savedBatchType === 'gp'
+        ? { vehicle_plate: item.trim().toUpperCase(), company_name: company }
+        : { driver_email: item.trim().toLowerCase(), company_name: company }
+    );
+    window._setSaveStatus('saving');
+    supabaseClient.schema('evone_billing').from(table).insert(toInsert).then(({ error }) => {
+        if (error) { window._setSaveStatus('error'); alert('Save failed: ' + error.message); }
+        else window._setSaveStatus('saved');
+    });
 };
 
 window.openManageModal = function(type) {
@@ -484,25 +508,29 @@ window.clearAllManageItems = function() {
 };
 
 window.saveManageModal = function() {
-    const tbodyId = window.currentManageType === 'gp' ? 'gpTableBody' : 'spTableBody';
+    const savedType    = window.currentManageType;
+    const savedCompany = window.currentManageCompany;
+    const tbodyId = savedType === 'gp' ? 'gpTableBody' : 'spTableBody';
     const tbody = document.getElementById(tbodyId);
-    
-    const rows = document.querySelectorAll(`#${tbodyId} tr`);
-    rows.forEach(row => {
+
+    // Remove existing DOM rows for this company
+    document.querySelectorAll(`#${tbodyId} tr`).forEach(row => {
         const tdComp = row.cells[1];
         const rowCompany = tdComp.querySelector('input') ? tdComp.querySelector('input').value.trim() : tdComp.innerText.trim();
-        if (rowCompany.toLowerCase() === window.currentManageCompany.toLowerCase()) row.remove();
+        if (rowCompany.toLowerCase() === savedCompany.toLowerCase()) row.remove();
     });
 
-    const inputs = document.querySelectorAll('#manageModalList input');
-    inputs.forEach(input => {
+    // Capture new values from modal and update DOM
+    const newValues = [];
+    document.querySelectorAll('#manageModalList input').forEach(input => {
         const val = input.value.trim();
         if (val) {
+            newValues.push(val);
             const tr = document.createElement('tr');
             tr.className = "hover:bg-gray-50";
             tr.innerHTML = `
-                <td class="px-6 py-3 font-medium ${window.currentManageType==='gp'?'tracking-wider':''}">${val}</td>
-                <td class="px-6 py-3 text-blue-600 font-bold">${window.currentManageCompany}</td>
+                <td class="px-6 py-3 font-medium ${savedType==='gp'?'tracking-wider':''}">${val}</td>
+                <td class="px-6 py-3 text-blue-600 font-bold">${savedCompany}</td>
                 <td class="px-6 py-3">${window.generateActionButtons(false)}</td>
             `;
             tbody.prepend(tr);
@@ -510,10 +538,151 @@ window.saveManageModal = function() {
     });
 
     window.closeManageModal();
-    window.filterTable(window.currentManageType); 
+    window.filterTable(savedType);
+
+    // Auto-save: delete all records for this company then re-insert
+    const table = savedType === 'gp' ? 'gp_crm' : 'sp_crm';
+    window._setSaveStatus('saving');
+    supabaseClient.schema('evone_billing').from(table).delete().eq('company_name', savedCompany)
+        .then(({ error }) => {
+            if (error) { window._setSaveStatus('error'); alert('Delete failed: ' + error.message); return; }
+            if (!newValues.length) { window._setSaveStatus('saved'); return; }
+            const toInsert = newValues.map(val => savedType === 'gp'
+                ? { vehicle_plate: val.toUpperCase(), company_name: savedCompany }
+                : { driver_email: val.toLowerCase(), company_name: savedCompany }
+            );
+            supabaseClient.schema('evone_billing').from(table).insert(toInsert).then(({ error: e2 }) => {
+                if (e2) { window._setSaveStatus('error'); alert('Insert failed: ' + e2.message); }
+                else window._setSaveStatus('saved');
+            });
+        });
 };
 
 // ---------------- 云端同步逻辑 ----------------
+
+window._setSaveStatus = function(status) {
+    const dot = document.getElementById('saveStatusDot');
+    const txt = document.getElementById('saveStatusText');
+    if (!dot || !txt) return;
+    if (status === 'saving') {
+        dot.style.background = '#f59e0b'; txt.textContent = 'Saving...'; txt.style.color = '#92400e';
+    } else if (status === 'saved') {
+        dot.style.background = '#16a34a'; txt.textContent = 'Saved'; txt.style.color = '#166534';
+        setTimeout(() => window._setSaveStatus('ready'), 3000);
+    } else if (status === 'error') {
+        dot.style.background = '#dc2626'; txt.textContent = 'Save failed'; txt.style.color = '#991b1b';
+    } else {
+        dot.style.background = '#d1d5db'; txt.textContent = 'Ready'; txt.style.color = '#9ca3af';
+    }
+};
+
+window._autoSave = async function(tbodyId, tr, origKey) {
+    window._setSaveStatus('saving');
+    try {
+        if (tbodyId === 'rateTableBody') {
+            const tds = tr.querySelectorAll('td');
+            const company_name   = tds[0].textContent.trim();
+            const base_rate      = parseFloat(tds[1].textContent) || 0;
+            const threshold_kwh  = tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent);
+            const discounted_rate = parseFloat(tds[3].textContent) || 0;
+            if (origKey && origKey !== company_name)
+                await supabaseClient.schema('evone_billing').from('pricing_rates').delete().eq('company_name', origKey);
+            await supabaseClient.schema('evone_billing').from('pricing_rates').delete().eq('company_name', company_name);
+            const { error } = await supabaseClient.schema('evone_billing').from('pricing_rates')
+                .insert({ company_name, base_rate, threshold_kwh, discounted_rate });
+            if (error) throw error;
+        } else if (tbodyId === 'gpTableBody') {
+            const tds = tr.querySelectorAll('td');
+            const vehicle_plate = tds[0].textContent.trim().toUpperCase();
+            const company_name  = tds[1].textContent.trim();
+            if (origKey && origKey.toUpperCase() !== vehicle_plate)
+                await supabaseClient.schema('evone_billing').from('gp_crm').delete().eq('vehicle_plate', origKey.toUpperCase());
+            await supabaseClient.schema('evone_billing').from('gp_crm').delete().eq('vehicle_plate', vehicle_plate);
+            const { error } = await supabaseClient.schema('evone_billing').from('gp_crm').insert({ vehicle_plate, company_name });
+            if (error) throw error;
+        } else if (tbodyId === 'spTableBody') {
+            const tds = tr.querySelectorAll('td');
+            const driver_email = tds[0].textContent.trim().toLowerCase();
+            const company_name = tds[1].textContent.trim();
+            if (origKey && origKey.toLowerCase() !== driver_email)
+                await supabaseClient.schema('evone_billing').from('sp_crm').delete().eq('driver_email', origKey.toLowerCase());
+            await supabaseClient.schema('evone_billing').from('sp_crm').delete().eq('driver_email', driver_email);
+            const { error } = await supabaseClient.schema('evone_billing').from('sp_crm').insert({ driver_email, company_name });
+            if (error) throw error;
+        }
+        window._setSaveStatus('saved');
+    } catch (e) {
+        window._setSaveStatus('error');
+        alert('Save failed: ' + (e.message || JSON.stringify(e)));
+    }
+};
+
+window._autoDelete = async function(tbodyId, key) {
+    window._setSaveStatus('saving');
+    try {
+        if (tbodyId === 'rateTableBody') {
+            const { error } = await supabaseClient.schema('evone_billing').from('pricing_rates').delete().eq('company_name', key);
+            if (error) throw error;
+        } else if (tbodyId === 'gpTableBody') {
+            const { error } = await supabaseClient.schema('evone_billing').from('gp_crm').delete().eq('vehicle_plate', key.toUpperCase());
+            if (error) throw error;
+        } else if (tbodyId === 'spTableBody') {
+            const { error } = await supabaseClient.schema('evone_billing').from('sp_crm').delete().eq('driver_email', key.toLowerCase());
+            if (error) throw error;
+        }
+        window._setSaveStatus('saved');
+    } catch (e) {
+        window._setSaveStatus('error');
+        alert('Delete failed: ' + (e.message || JSON.stringify(e)));
+    }
+};
+
+window._fullSync = async function() {
+    window._setSaveStatus('saving');
+    try {
+        const rates = [];
+        document.querySelectorAll('#rateTableBody tr').forEach(row => {
+            const tds = row.querySelectorAll('td');
+            if (tds.length < 4) return;
+            const company = tds[0].textContent.trim();
+            if (company) rates.push({ company_name: company, base_rate: parseFloat(tds[1].textContent) || 0, threshold_kwh: tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent), discounted_rate: parseFloat(tds[3].textContent) || 0 });
+        });
+        const gps = [];
+        document.querySelectorAll('#gpTableBody tr').forEach(row => {
+            const tds = row.querySelectorAll('td');
+            if (tds.length < 2) return;
+            const plate = tds[0].textContent.trim().toUpperCase();
+            if (plate) gps.push({ vehicle_plate: plate, company_name: tds[1].textContent.trim() });
+        });
+        const sps = [];
+        document.querySelectorAll('#spTableBody tr').forEach(row => {
+            const tds = row.querySelectorAll('td');
+            if (tds.length < 2) return;
+            const email = tds[0].textContent.trim().toLowerCase();
+            if (email) sps.push({ driver_email: email, company_name: tds[1].textContent.trim() });
+        });
+        async function syncTable(table, domRows, keyField) {
+            const { data: dbRows, error: fe } = await supabaseClient.schema('evone_billing').from(table).select('*');
+            if (fe) throw new Error(fe.message);
+            const dbMap = new Map((dbRows || []).map(r => [r[keyField], r]));
+            const domKeys = new Set(domRows.map(r => r[keyField]));
+            const toInsert = domRows.filter(r => !dbMap.has(r[keyField]));
+            const toUpdate = domRows.filter(r => { const db = dbMap.get(r[keyField]); return db && Object.keys(r).some(k => String(r[k] ?? '') !== String(db[k] ?? '')); });
+            const toDelete = (dbRows || []).filter(r => !domKeys.has(r[keyField]));
+            if (toInsert.length) { const { error: e } = await supabaseClient.schema('evone_billing').from(table).insert(toInsert); if (e) throw new Error(e.message); }
+            if (toUpdate.length) { const results = await Promise.all(toUpdate.map(r => { const { [keyField]: key, ...payload } = r; return supabaseClient.schema('evone_billing').from(table).update(payload).eq(keyField, key); })); const ue = results.find(r => r.error)?.error; if (ue) throw new Error(ue.message); }
+            if (toDelete.length) { const { error: e } = await supabaseClient.schema('evone_billing').from(table).delete().in(keyField, toDelete.map(r => r[keyField])); if (e) throw new Error(e.message); }
+        }
+        await syncTable('pricing_rates', rates, 'company_name');
+        await syncTable('gp_crm', gps, 'vehicle_plate');
+        await syncTable('sp_crm', sps, 'driver_email');
+        window._setSaveStatus('saved');
+    } catch (e) {
+        window._setSaveStatus('error');
+        throw e;
+    }
+};
+
 window.loadAllFromSupabase = async function() {
     if (typeof supabaseClient === 'undefined' || !supabaseClient) return;
     try {
@@ -579,7 +748,11 @@ window.restoreFromBackup = function(input) {
 
             window.filterTable('gp');
             window.filterTable('sp');
-            alert(`Backup restored (${backedUpAt}). Click "Sync to Cloud" to persist.`);
+            window._fullSync().then(() => {
+                alert(`Backup restored and synced (${backedUpAt}).`);
+            }).catch(err => {
+                alert('Backup restored to page but cloud sync failed: ' + err.message);
+            });
         } catch(err) {
             alert("Failed to parse backup file: " + err.message);
         }
@@ -587,114 +760,6 @@ window.restoreFromBackup = function(input) {
     reader.readAsText(file);
 };
 
-window.saveAllToSupabase = async function(btn) {
-    if (document.querySelectorAll('.editing-row').length > 0) {
-        alert("Please Save all editing rows before syncing to cloud."); return;
-    }
-    btn.innerText = "Synchronizing...";
-    btn.disabled = true;
-
-    try {
-        // ── 0. Backup current DB state to a local JSON file ──────────────
-        const [{ data: backupRates }, { data: backupGps }, { data: backupSps }] = await Promise.all([
-            supabaseClient.schema('evone_billing').from('pricing_rates').select('*'),
-            supabaseClient.schema('evone_billing').from('gp_crm').select('*'),
-            supabaseClient.schema('evone_billing').from('sp_crm').select('*'),
-        ]);
-        const backupPayload = {
-            backed_up_at: new Date().toISOString(),
-            pricing_rates: backupRates || [],
-            gp_crm:        backupGps   || [],
-            sp_crm:        backupSps   || [],
-        };
-        const backupBlob   = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
-        const backupUrl    = URL.createObjectURL(backupBlob);
-        const backupAnchor = document.createElement('a');
-        backupAnchor.href     = backupUrl;
-        backupAnchor.download = `evone_billing_backup_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
-        backupAnchor.click();
-        URL.revokeObjectURL(backupUrl);
-
-        // ── 1. Collect DOM data (textContent handles display:none rows) ──
-        const rates = [];
-        document.querySelectorAll('#rateTableBody tr').forEach(row => {
-            const tds = row.querySelectorAll('td');
-            if (tds.length < 4) return;
-            const company = tds[0].textContent.trim();
-            if (company) rates.push({
-                company_name: company,
-                base_rate: parseFloat(tds[1].textContent) || 0,
-                threshold_kwh: tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent),
-                discounted_rate: parseFloat(tds[3].textContent) || 0
-            });
-        });
-
-        const gps = [];
-        document.querySelectorAll('#gpTableBody tr').forEach(row => {
-            const tds = row.querySelectorAll('td');
-            if (tds.length < 2) return;
-            const plate = tds[0].textContent.trim().toUpperCase();
-            if (plate) gps.push({ vehicle_plate: plate, company_name: tds[1].textContent.trim() });
-        });
-
-        const sps = [];
-        document.querySelectorAll('#spTableBody tr').forEach(row => {
-            const tds = row.querySelectorAll('td');
-            if (tds.length < 2) return;
-            const email = tds[0].textContent.trim().toLowerCase();
-            if (email) sps.push({ driver_email: email, company_name: tds[1].textContent.trim() });
-        });
-
-        // ── 2. Safety confirms if a table is completely empty ────────────
-        if (gps.length === 0 && !confirm("GP Fleet CRM is empty — all existing GP records will be removed from the cloud. Continue?")) return;
-        if (sps.length === 0 && !confirm("SP Drivers CRM is empty — all existing SP records will be removed from the cloud. Continue?")) return;
-
-        // ── 3. Diff-based sync: insert new, update changed, delete removed ─
-        async function syncTable(table, domRows, keyField) {
-            const { data: dbRows, error: fetchErr } = await supabaseClient.schema('evone_billing').from(table).select('*');
-            if (fetchErr) throw new Error(fetchErr.message);
-
-            const dbMap   = new Map((dbRows || []).map(r => [r[keyField], r]));
-            const domKeys = new Set(domRows.map(r => r[keyField]));
-
-            const toInsert = domRows.filter(r => !dbMap.has(r[keyField]));
-            const toUpdate = domRows.filter(r => {
-                const db = dbMap.get(r[keyField]);
-                return db && Object.keys(r).some(k => String(r[k] ?? '') !== String(db[k] ?? ''));
-            });
-            const toDelete = (dbRows || []).filter(r => !domKeys.has(r[keyField]));
-
-            if (toInsert.length > 0) {
-                const { error: e } = await supabaseClient.schema('evone_billing').from(table).insert(toInsert);
-                if (e) throw new Error(e.message);
-            }
-            if (toUpdate.length > 0) {
-                const results = await Promise.all(toUpdate.map(r => {
-                    const { [keyField]: key, ...payload } = r;
-                    return supabaseClient.schema('evone_billing').from(table).update(payload).eq(keyField, key);
-                }));
-                const updateErr = results.find(res => res.error)?.error;
-                if (updateErr) throw new Error(updateErr.message);
-            }
-            if (toDelete.length > 0) {
-                const { error: e } = await supabaseClient.schema('evone_billing').from(table)
-                    .delete().in(keyField, toDelete.map(r => r[keyField]));
-                if (e) throw new Error(e.message);
-            }
-        }
-
-        await syncTable('pricing_rates', rates, 'company_name');
-        await syncTable('gp_crm',        gps,   'vehicle_plate');
-        await syncTable('sp_crm',        sps,   'driver_email');
-
-        alert("✅ Success: Cloud database fully synchronized!");
-    } catch (error) {
-        alert("❌ Sync Failed: " + error.message);
-    } finally {
-        btn.innerHTML = `<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>Sync to Cloud`;
-        btn.disabled = false;
-    }
-};
 
 window.htmlTableToExcelBlob = function(id, headers) {
     const data = [headers];
