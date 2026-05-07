@@ -13,45 +13,49 @@
 
     <!-- Stats row -->
     <div class="px-8 py-5 grid grid-cols-4 gap-4 shrink-0">
-
-        <!-- Total SKUs -->
         <div class="rounded-2xl shadow-sm p-6" style="background:#1a3a2a">
             <p class="text-xs font-semibold uppercase tracking-wider mb-3" style="color:#6ee7b7">Total SKUs</p>
             <p class="text-5xl font-black" style="color:#fbbf24" id="statSkus">—</p>
             <p class="text-xs mt-2" style="color:#6ee7b7">Across all categories</p>
         </div>
-
-        <!-- Stock Value -->
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Stock Value (Cost)</p>
             <p class="text-3xl font-black text-gray-900" id="statValue">—</p>
             <p class="text-xs text-gray-400 mt-2">At cost</p>
         </div>
-
-        <!-- Low / Out of Stock -->
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Low / Out of Stock</p>
             <p class="text-5xl font-black text-gray-900" id="statLow">—</p>
             <p class="text-xs text-gray-400 mt-2">Needs reorder</p>
         </div>
-
-        <!-- Avg Gross Margin -->
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Avg Gross Margin</p>
             <p class="text-3xl font-black text-gray-900" id="statMargin">—</p>
             <p class="text-xs text-gray-400 mt-2">Selling vs cost</p>
         </div>
-
     </div>
 
-    <!-- Table card -->
-    <div class="flex-1 flex flex-col mx-8 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0">
+    <!-- Tab nav -->
+    <div class="px-8 shrink-0">
+        <div class="flex border-b border-gray-200">
+            <button onclick="switchMainTab('products')" id="tab-btn-products"
+                class="px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition mr-1"
+                style="color:#1a3a2a;border-color:#1a3a2a">
+                Products
+            </button>
+            <button onclick="switchMainTab('movements')" id="tab-btn-movements"
+                class="px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-400 -mb-px hover:text-gray-600 transition">
+                Stock Movements
+            </button>
+        </div>
+    </div>
+
+    <!-- Tab 1: Products -->
+    <div id="tab-products" class="flex-1 flex flex-col mx-8 mt-4 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0">
 
         <!-- Toolbar -->
         <div class="flex items-center gap-2 px-6 py-4 border-b shrink-0 flex-wrap">
-
             <div id="catPills" class="flex gap-1.5 flex-wrap"></div>
-
             <div class="relative ml-1">
                 <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -60,9 +64,17 @@
                     class="pl-8 pr-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-evgreen outline-none w-52"
                     oninput="applyFilters()">
             </div>
-
             <div class="flex-1"></div>
-
+            <button onclick="openMovementModal(null)"
+                class="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+                Stock In / Out
+            </button>
+            <button onclick="exportProducts()"
+                class="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export CSV
+            </button>
             <button onclick="openModal()"
                 class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
                 style="background:#1a3a2a">
@@ -105,6 +117,58 @@
 
         <div id="tableError" class="hidden px-6 py-3 bg-red-50 text-red-700 text-sm border-t shrink-0"></div>
     </div>
+
+    <!-- Tab 2: Stock Movements -->
+    <div id="tab-movements" class="hidden flex-col mx-8 mt-4 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0" style="flex:1">
+
+        <!-- Toolbar -->
+        <div class="flex items-center gap-3 px-6 py-4 border-b shrink-0 flex-wrap">
+            <div class="flex gap-1.5">
+                <button onclick="setMovFilter('all')" id="mf-all"
+                    class="px-3 py-1 rounded-full text-sm font-medium border transition"
+                    style="background:#1a3a2a;color:#fff;border-color:#1a3a2a">All</button>
+                <button onclick="setMovFilter('in')" id="mf-in"
+                    class="px-3 py-1 rounded-full text-sm font-medium border transition bg-white text-gray-600 border-gray-200">In</button>
+                <button onclick="setMovFilter('out')" id="mf-out"
+                    class="px-3 py-1 rounded-full text-sm font-medium border transition bg-white text-gray-600 border-gray-200">Out</button>
+            </div>
+            <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input id="movSearch" type="text" placeholder="Search SKU / product..."
+                    class="pl-8 pr-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-evgreen outline-none w-48"
+                    oninput="applyMovFilters()">
+            </div>
+            <div class="flex-1"></div>
+            <button onclick="openMovementModal(null)"
+                class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
+                style="background:#1a3a2a">
+                + Log Movement
+            </button>
+        </div>
+
+        <!-- Movements table -->
+        <div class="flex-1 overflow-auto min-h-0">
+            <table class="w-full text-sm text-left">
+                <thead class="sticky top-0 bg-white z-10">
+                    <tr class="border-b">
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Date / Time</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">SKU</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Product</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Qty</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Reason</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="movTableBody">
+                    <tr><td colspan="7" class="text-center py-12 text-gray-400">Select "Stock Movements" tab to load.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 
 <!-- New / Edit Product Modal -->
@@ -119,14 +183,12 @@
 
         <div class="overflow-y-auto px-6 pb-6 space-y-4">
 
-            <!-- Name -->
             <div>
                 <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Name</label>
                 <input id="f_name" type="text"
                     class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
             </div>
 
-            <!-- SKU + Category -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">SKU</label>
@@ -141,7 +203,6 @@
                 </div>
             </div>
 
-            <!-- Cost + Price -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Cost (SGD)</label>
@@ -157,12 +218,10 @@
                 </div>
             </div>
 
-            <!-- Margin display -->
             <div class="px-4 py-3 rounded-xl text-sm" style="background:#f0fdf4">
                 Margin: <strong id="marginPct" style="color:#166534">0.0%</strong>
             </div>
 
-            <!-- On-hand Qty + Reorder Level -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">On-Hand Qty</label>
@@ -176,7 +235,6 @@
                 </div>
             </div>
 
-            <!-- Supplier + Storage Location -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Supplier</label>
@@ -210,11 +268,92 @@
         </div>
     </div>
 </div>
+
+<!-- Stock Movement Modal -->
+<div id="movModal" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+
+        <div class="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
+            <h2 class="text-xl font-bold text-gray-900">Log Stock Movement</h2>
+            <button onclick="closeMovementModal()"
+                class="w-8 h-8 flex items-center justify-center rounded-full border text-gray-400 hover:text-gray-600 hover:border-gray-400 transition text-lg leading-none">×</button>
+        </div>
+
+        <div class="px-6 pb-6 space-y-4">
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Product</label>
+                <select id="mov_product"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white"
+                    onchange="updateMovStock()">
+                    <option value="">Select a product...</option>
+                </select>
+                <p class="text-xs text-gray-400 mt-1" id="mov_stock_hint"></p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Type</label>
+                <div class="flex gap-2">
+                    <button type="button" onclick="setMovType('in')" id="mov-type-in"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition">
+                        ▲ Stock In
+                    </button>
+                    <button type="button" onclick="setMovType('out')" id="mov-type-out"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition">
+                        ▼ Stock Out
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Quantity</label>
+                <input id="mov_qty" type="number" min="1" step="1" value="1"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Reason</label>
+                <select id="mov_reason"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white">
+                    <option value="">Select reason...</option>
+                    <option value="Purchase">Purchase</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Return">Return</option>
+                    <option value="Adjustment">Adjustment</option>
+                    <option value="Transfer">Transfer</option>
+                    <option value="Others">Others</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    Notes <span class="text-gray-300 font-normal normal-case">(optional)</span>
+                </label>
+                <textarea id="mov_notes" rows="2"
+                    class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm resize-none"></textarea>
+            </div>
+
+            <div id="movModalError" class="hidden text-red-600 text-sm"></div>
+
+            <div class="flex gap-3 pt-1">
+                <button onclick="closeMovementModal()"
+                    class="flex-1 px-4 py-2.5 border rounded-xl text-sm font-medium hover:bg-gray-50 transition">Cancel</button>
+                <button onclick="submitMovement()" id="movSubmitBtn"
+                    class="flex-1 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition"
+                    style="background:#1a3a2a">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-let allProducts      = [];
-let activeCatFilter  = 'All';
+let allProducts     = [];
+let allMovements    = [];
+let activeCatFilter = 'All';
+let movTypeFilter   = 'all';
+let currentMovType  = 'in';
+let currentMainTab  = 'products';
 let editingProductId = null;
 
 // ---- Helpers ----
@@ -244,16 +383,16 @@ function calcMargin(cost, price) {
 function stockStatus(qty, reorder) {
     const q = parseInt(qty) || 0;
     const r = parseInt(reorder) || 0;
-    if (q <= 0)   return 'out';
-    if (q <= r)   return 'low';
+    if (q <= 0) return 'out';
+    if (q <= r) return 'low';
     return 'in';
 }
 
 function stockBarPct(qty, reorder) {
     const q = parseInt(qty) || 0;
     const r = parseInt(reorder) || 0;
-    if (q <= 0)  return 0;
-    if (r <= 0)  return 100;
+    if (q <= 0) return 0;
+    if (r <= 0) return 100;
     return Math.min((q / r) * 100, 100);
 }
 
@@ -268,6 +407,41 @@ async function onPageLoad() {
         day: 'numeric', month: 'long', year: 'numeric',
     });
     await loadProducts();
+}
+
+// ---- Main tab switching ----
+
+function switchMainTab(tab) {
+    currentMainTab = tab;
+    const prodEl = document.getElementById('tab-products');
+    const movEl  = document.getElementById('tab-movements');
+    const baseClass = 'mx-8 mt-4 mb-6 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-0';
+
+    if (tab === 'products') {
+        prodEl.className = 'flex-1 flex flex-col ' + baseClass;
+        movEl.className  = 'hidden ' + baseClass;
+    } else {
+        prodEl.className = 'hidden ' + baseClass;
+        movEl.className  = 'flex-1 flex flex-col ' + baseClass;
+        if (allMovements.length === 0) loadMovements();
+    }
+
+    const activeStyle  = 'px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition mr-1';
+    const inactiveStyle = 'px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-400 -mb-px hover:text-gray-600 transition';
+    const prodBtn = document.getElementById('tab-btn-products');
+    const movBtn  = document.getElementById('tab-btn-movements');
+
+    if (tab === 'products') {
+        prodBtn.className = activeStyle;
+        prodBtn.style.cssText = 'color:#1a3a2a;border-color:#1a3a2a';
+        movBtn.className  = inactiveStyle;
+        movBtn.style.cssText  = '';
+    } else {
+        prodBtn.className = inactiveStyle;
+        prodBtn.style.cssText = '';
+        movBtn.className  = activeStyle;
+        movBtn.style.cssText  = 'color:#1a3a2a;border-color:#1a3a2a';
+    }
 }
 
 // ---- Category pills ----
@@ -296,7 +470,7 @@ function setCatFilter(cat) {
     applyFilters();
 }
 
-// ---- Data ----
+// ---- Products data ----
 
 async function loadProducts() {
     try {
@@ -322,11 +496,9 @@ function syncCategoryDatalist(cats) {
 }
 
 function renderStats(products) {
-    const totalValue = products.reduce((s, p) => s + (parseFloat(p.cost) || 0) * (parseInt(p.stock_qty) || 0), 0);
+    const totalValue   = products.reduce((s, p) => s + (parseFloat(p.cost) || 0) * (parseInt(p.stock_qty) || 0), 0);
     const needsReorder = products.filter(p => stockStatus(p.stock_qty, p.reorder_level) !== 'in').length;
-    const margins = products
-        .map(p => calcMargin(p.cost, p.price))
-        .filter(m => m > 0);
+    const margins = products.map(p => calcMargin(p.cost, p.price)).filter(m => m > 0);
     const avgMargin = margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
 
     document.getElementById('statSkus').textContent   = products.length;
@@ -337,7 +509,6 @@ function renderStats(products) {
 
 function applyFilters() {
     const search = document.getElementById('searchInput').value.toLowerCase();
-
     const filtered = allProducts.filter(p => {
         if (activeCatFilter !== 'All' && p.category !== activeCatFilter) return false;
         if (search) {
@@ -346,7 +517,6 @@ function applyFilters() {
         }
         return true;
     });
-
     renderTable(filtered);
 }
 
@@ -361,7 +531,6 @@ function renderTable(products) {
         const status  = stockStatus(p.stock_qty, p.reorder_level);
         const barPct  = stockBarPct(p.stock_qty, p.reorder_level);
         const margin  = calcMargin(p.cost, p.price);
-
         const barColor  = status === 'in'  ? '#16a34a' : status === 'low' ? '#d97706' : '#dc2626';
         const badgeCls  = status === 'in'  ? 'bg-green-100 text-green-700'
                         : status === 'low' ? 'bg-amber-100 text-amber-700'
@@ -444,12 +613,12 @@ function showTableError(msg) {
     el.classList.remove('hidden');
 }
 
-// ---- Modal ----
+// ---- Product Modal ----
 
 function updateMarginDisplay() {
     const cost  = parseFloat(document.getElementById('f_cost').value)  || 0;
     const price = parseFloat(document.getElementById('f_price').value) || 0;
-    const m     = price > 0 ? ((price - cost) / price * 100).toFixed(1) : '0.0';
+    const m = price > 0 ? ((price - cost) / price * 100).toFixed(1) : '0.0';
     document.getElementById('marginPct').textContent = m + '%';
 }
 
@@ -529,5 +698,213 @@ function showModalError(msg) {
     const el = document.getElementById('modalError');
     el.textContent = msg;
     el.classList.remove('hidden');
+}
+
+// ---- Stock Movements ----
+
+async function loadMovements() {
+    document.getElementById('movTableBody').innerHTML =
+        '<tr><td colspan="7" class="text-center py-12 text-gray-400">Loading...</td></tr>';
+    try {
+        const res  = await fetch('/api/stock-movements', { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error(`Server error (${res.status})`);
+        const data = await res.json();
+        if (data.error || data.detail) throw new Error(data.message || data.detail);
+        allMovements = data.movements || [];
+        applyMovFilters();
+    } catch (e) {
+        document.getElementById('movTableBody').innerHTML =
+            `<tr><td colspan="7" class="text-center py-8 text-red-500">Error: ${esc(e.message)}</td></tr>`;
+    }
+}
+
+function setMovFilter(type) {
+    movTypeFilter = type;
+    ['all', 'in', 'out'].forEach(t => {
+        const btn = document.getElementById('mf-' + t);
+        btn.style.cssText = t === type
+            ? 'background:#1a3a2a;color:#fff;border-color:#1a3a2a'
+            : 'background:#fff;color:#4b5563;border-color:#e5e7eb';
+    });
+    applyMovFilters();
+}
+
+function applyMovFilters() {
+    const search = document.getElementById('movSearch').value.toLowerCase();
+    const filtered = allMovements.filter(m => {
+        if (movTypeFilter !== 'all' && m.type !== movTypeFilter) return false;
+        if (search) {
+            const hay = `${m.product_sku} ${m.product_name}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+    renderMovements(filtered);
+}
+
+function renderMovements(movements) {
+    const tbody = document.getElementById('movTableBody');
+    if (!movements.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-gray-400">No movements found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = movements.map(m => {
+        const dt    = new Date(m.created_at);
+        const dtStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    + ' ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const badge = m.type === 'in'
+            ? '<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">▲ In</span>'
+            : '<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-600">▼ Out</span>';
+        return `
+        <tr class="border-b hover:bg-gray-50 transition">
+            <td class="px-6 py-4 text-gray-500 text-xs whitespace-nowrap">${dtStr}</td>
+            <td class="px-4 py-4 font-bold text-sm" style="color:#1a3a2a">${esc(m.product_sku)}</td>
+            <td class="px-4 py-4 font-medium text-gray-800">${esc(m.product_name)}</td>
+            <td class="px-4 py-4">${badge}</td>
+            <td class="px-4 py-4 font-bold text-gray-900">${m.qty}</td>
+            <td class="px-4 py-4 text-gray-500">${esc(m.reason || '—')}</td>
+            <td class="px-4 py-4 text-gray-400 text-xs max-w-xs truncate">${esc(m.notes || '—')}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ---- Movement Modal ----
+
+function openMovementModal(productId) {
+    currentMovType = 'in';
+    setMovType('in');
+
+    const select = document.getElementById('mov_product');
+    select.innerHTML = '<option value="">Select a product...</option>' +
+        allProducts.map(p =>
+            `<option value="${esc(p.id)}" data-stock="${parseInt(p.stock_qty)||0}" data-sku="${esc(p.sku)}" data-name="${esc(p.name)}">${esc(p.sku)} — ${esc(p.name)}</option>`
+        ).join('');
+
+    if (productId) {
+        select.value = productId;
+        updateMovStock();
+    } else {
+        document.getElementById('mov_stock_hint').textContent = '';
+    }
+
+    document.getElementById('mov_qty').value    = '1';
+    document.getElementById('mov_reason').value = '';
+    document.getElementById('mov_notes').value  = '';
+    document.getElementById('movModalError').classList.add('hidden');
+    document.getElementById('movModal').classList.remove('hidden');
+}
+
+function closeMovementModal() {
+    document.getElementById('movModal').classList.add('hidden');
+}
+
+function setMovType(type) {
+    currentMovType = type;
+    const inBtn  = document.getElementById('mov-type-in');
+    const outBtn = document.getElementById('mov-type-out');
+    if (type === 'in') {
+        inBtn.style.cssText  = 'background:#dcfce7;color:#166534;border-color:#16a34a';
+        outBtn.style.cssText = 'background:#fff;color:#9ca3af;border-color:#e5e7eb';
+    } else {
+        inBtn.style.cssText  = 'background:#fff;color:#9ca3af;border-color:#e5e7eb';
+        outBtn.style.cssText = 'background:#fee2e2;color:#991b1b;border-color:#dc2626';
+    }
+}
+
+function updateMovStock() {
+    const select = document.getElementById('mov_product');
+    const opt = select.options[select.selectedIndex];
+    if (!opt || !opt.value) {
+        document.getElementById('mov_stock_hint').textContent = '';
+        return;
+    }
+    document.getElementById('mov_stock_hint').textContent = `Current stock: ${opt.dataset.stock} units`;
+}
+
+async function submitMovement() {
+    const select = document.getElementById('mov_product');
+    const opt    = select.options[select.selectedIndex];
+    const productId = select.value;
+    const qty    = parseInt(document.getElementById('mov_qty').value) || 0;
+    const reason = document.getElementById('mov_reason').value;
+    const notes  = document.getElementById('mov_notes').value.trim();
+
+    if (!productId) { showMovError('Please select a product.'); return; }
+    if (qty < 1)    { showMovError('Quantity must be at least 1.'); return; }
+
+    const btn = document.getElementById('movSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        const res = await fetch('/api/stock-movements', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                product_id:   productId,
+                product_sku:  opt.dataset.sku,
+                product_name: opt.dataset.name,
+                type:         currentMovType,
+                qty,
+                reason:  reason || null,
+                notes:   notes  || null,
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.message || 'Server error');
+        if (data.error) throw new Error(data.message);
+
+        closeMovementModal();
+        await loadProducts();
+        allMovements = [];
+        if (currentMainTab === 'movements') await loadMovements();
+    } catch (e) {
+        showMovError(e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm';
+    }
+}
+
+function showMovError(msg) {
+    const el = document.getElementById('movModalError');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+// ---- CSV Export ----
+
+function downloadCSV(rows, filename) {
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function exportProducts() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allProducts.filter(p => {
+        if (activeCatFilter !== 'All' && p.category !== activeCatFilter) return false;
+        if (search) {
+            const hay = `${p.sku} ${p.name} ${p.category || ''}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+    const headers = ['SKU', 'Name', 'Category', 'Stock Qty', 'Reorder Level', 'Cost (SGD)', 'Price (SGD)', 'Margin (%)', 'Supplier', 'Storage Location', 'Status'];
+    const rows = filtered.map(p => [
+        p.sku, p.name, p.category || '',
+        parseInt(p.stock_qty) || 0,
+        parseInt(p.reorder_level) || 0,
+        parseFloat(p.cost) || 0,
+        parseFloat(p.price) || 0,
+        calcMargin(p.cost, p.price).toFixed(1),
+        p.supplier || '', p.storage_location || '',
+        stockStatus(p.stock_qty, p.reorder_level),
+    ]);
+    downloadCSV([headers, ...rows], `evone_inventory_${new Date().toISOString().split('T')[0]}.csv`);
 }
 {% endblock %}

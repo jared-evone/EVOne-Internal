@@ -151,6 +151,11 @@
                 </div>
             </div>
         </div>
+
+        <div class="text-center mt-6 pb-2">
+            <label for="restoreBackupFile" class="text-xs text-gray-300 hover:text-gray-400 cursor-pointer transition select-none">restore from backup</label>
+            <input type="file" id="restoreBackupFile" accept=".json" class="hidden" onchange="window.restoreFromBackup(this)">
+        </div>
     </div>
 </div>
 
@@ -539,20 +544,89 @@ window.loadAllFromSupabase = async function() {
     } catch (e) { console.error("Sync Load Error", e); }
 };
 
+window.restoreFromBackup = function(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const backup = JSON.parse(e.target.result);
+            if (!backup.pricing_rates || !backup.gp_crm || !backup.sp_crm) {
+                alert("Invalid backup file."); return;
+            }
+            const backedUpAt = backup.backed_up_at ? new Date(backup.backed_up_at).toLocaleString() : 'unknown time';
+            if (!confirm(`Restore backup from ${backedUpAt}?\n\nThis will overwrite the current page data. Click "Sync to Cloud" afterwards to persist.`)) return;
+
+            const rateBody = document.getElementById('rateTableBody');
+            rateBody.innerHTML = '';
+            backup.pricing_rates.forEach(r => {
+                rateBody.innerHTML += `<tr class="hover:bg-gray-50"><td class="px-6 py-3 font-medium">${r.company_name}</td><td class="px-6 py-3 text-blue-600 font-bold">${r.base_rate}</td><td class="px-6 py-3 text-blue-600 font-bold">${r.threshold_kwh ?? ''}</td><td class="px-6 py-3 text-blue-600 font-bold">${r.discounted_rate}</td><td class="px-6 py-3">${window.generateActionButtons(false)}</td></tr>`;
+            });
+            window.syncCompanyList();
+
+            const gpBody = document.getElementById('gpTableBody');
+            gpBody.innerHTML = '';
+            backup.gp_crm.forEach(v => {
+                gpBody.innerHTML += `<tr class="hover:bg-gray-50"><td class="px-6 py-3 tracking-wider font-medium">${v.vehicle_plate}</td><td class="px-6 py-3 text-blue-600 font-bold">${v.company_name}</td><td class="px-6 py-3">${window.generateActionButtons(false)}</td></tr>`;
+            });
+
+            const spBody = document.getElementById('spTableBody');
+            spBody.innerHTML = '';
+            backup.sp_crm.forEach(d => {
+                spBody.innerHTML += `<tr class="hover:bg-gray-50"><td class="px-6 py-3 font-medium">${d.driver_email}</td><td class="px-6 py-3 text-blue-600 font-bold">${d.company_name}</td><td class="px-6 py-3">${window.generateActionButtons(false)}</td></tr>`;
+            });
+
+            window.filterTable('gp');
+            window.filterTable('sp');
+            alert(`Backup restored (${backedUpAt}). Click "Sync to Cloud" to persist.`);
+        } catch(err) {
+            alert("Failed to parse backup file: " + err.message);
+        }
+    };
+    reader.readAsText(file);
+};
+
 window.saveAllToSupabase = async function(btn) {
-    if(document.querySelectorAll('.editing-row').length > 0) {
+    if (document.querySelectorAll('.editing-row').length > 0) {
         alert("Please Save all editing rows before syncing to cloud."); return;
     }
     btn.innerText = "Synchronizing...";
     btn.disabled = true;
 
     try {
+        // ── 0. Backup current DB state to a local JSON file ──────────────
+        const [{ data: backupRates }, { data: backupGps }, { data: backupSps }] = await Promise.all([
+            supabaseClient.schema('evone_billing').from('pricing_rates').select('*'),
+            supabaseClient.schema('evone_billing').from('gp_crm').select('*'),
+            supabaseClient.schema('evone_billing').from('sp_crm').select('*'),
+        ]);
+        const backupPayload = {
+            backed_up_at: new Date().toISOString(),
+            pricing_rates: backupRates || [],
+            gp_crm:        backupGps   || [],
+            sp_crm:        backupSps   || [],
+        };
+        const backupBlob   = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
+        const backupUrl    = URL.createObjectURL(backupBlob);
+        const backupAnchor = document.createElement('a');
+        backupAnchor.href     = backupUrl;
+        backupAnchor.download = `evone_billing_backup_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`;
+        backupAnchor.click();
+        URL.revokeObjectURL(backupUrl);
+
+        // ── 1. Collect DOM data (textContent handles display:none rows) ──
         const rates = [];
         document.querySelectorAll('#rateTableBody tr').forEach(row => {
             const tds = row.querySelectorAll('td');
             if (tds.length < 4) return;
             const company = tds[0].textContent.trim();
-            if (company) rates.push({ company_name: company, base_rate: parseFloat(tds[1].textContent) || 0, threshold_kwh: tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent), discounted_rate: parseFloat(tds[3].textContent) || 0 });
+            if (company) rates.push({
+                company_name: company,
+                base_rate: parseFloat(tds[1].textContent) || 0,
+                threshold_kwh: tds[2].textContent.trim() === '' ? null : parseFloat(tds[2].textContent),
+                discounted_rate: parseFloat(tds[3].textContent) || 0
+            });
         });
 
         const gps = [];
@@ -571,20 +645,47 @@ window.saveAllToSupabase = async function(btn) {
             if (email) sps.push({ driver_email: email, company_name: tds[1].textContent.trim() });
         });
 
-        if (gps.length === 0 && !confirm("GP Fleet CRM table is empty — this will DELETE ALL existing GP records from the cloud. Continue?")) return;
-        if (sps.length === 0 && !confirm("SP Drivers CRM table is empty — this will DELETE ALL existing SP records from the cloud. Continue?")) return;
+        // ── 2. Safety confirms if a table is completely empty ────────────
+        if (gps.length === 0 && !confirm("GP Fleet CRM is empty — all existing GP records will be removed from the cloud. Continue?")) return;
+        if (sps.length === 0 && !confirm("SP Drivers CRM is empty — all existing SP records will be removed from the cloud. Continue?")) return;
 
-        const { error: delErr1 } = await supabaseClient.schema('evone_billing').from('pricing_rates').delete().not('company_name', 'is', null);
-        if (delErr1) throw new Error(delErr1.message);
-        if (rates.length > 0) await supabaseClient.schema('evone_billing').from('pricing_rates').insert(rates);
+        // ── 3. Diff-based sync: insert new, update changed, delete removed ─
+        async function syncTable(table, domRows, keyField) {
+            const { data: dbRows, error: fetchErr } = await supabaseClient.schema('evone_billing').from(table).select('*');
+            if (fetchErr) throw new Error(fetchErr.message);
 
-        const { error: delErr2 } = await supabaseClient.schema('evone_billing').from('gp_crm').delete().not('vehicle_plate', 'is', null);
-        if (delErr2) throw new Error(delErr2.message);
-        if (gps.length > 0) await supabaseClient.schema('evone_billing').from('gp_crm').insert(gps);
+            const dbMap   = new Map((dbRows || []).map(r => [r[keyField], r]));
+            const domKeys = new Set(domRows.map(r => r[keyField]));
 
-        const { error: delErr3 } = await supabaseClient.schema('evone_billing').from('sp_crm').delete().not('driver_email', 'is', null);
-        if (delErr3) throw new Error(delErr3.message);
-        if (sps.length > 0) await supabaseClient.schema('evone_billing').from('sp_crm').insert(sps);
+            const toInsert = domRows.filter(r => !dbMap.has(r[keyField]));
+            const toUpdate = domRows.filter(r => {
+                const db = dbMap.get(r[keyField]);
+                return db && Object.keys(r).some(k => String(r[k] ?? '') !== String(db[k] ?? ''));
+            });
+            const toDelete = (dbRows || []).filter(r => !domKeys.has(r[keyField]));
+
+            if (toInsert.length > 0) {
+                const { error: e } = await supabaseClient.schema('evone_billing').from(table).insert(toInsert);
+                if (e) throw new Error(e.message);
+            }
+            if (toUpdate.length > 0) {
+                const results = await Promise.all(toUpdate.map(r => {
+                    const { [keyField]: key, ...payload } = r;
+                    return supabaseClient.schema('evone_billing').from(table).update(payload).eq(keyField, key);
+                }));
+                const updateErr = results.find(res => res.error)?.error;
+                if (updateErr) throw new Error(updateErr.message);
+            }
+            if (toDelete.length > 0) {
+                const { error: e } = await supabaseClient.schema('evone_billing').from(table)
+                    .delete().in(keyField, toDelete.map(r => r[keyField]));
+                if (e) throw new Error(e.message);
+            }
+        }
+
+        await syncTable('pricing_rates', rates, 'company_name');
+        await syncTable('gp_crm',        gps,   'vehicle_plate');
+        await syncTable('sp_crm',        sps,   'driver_email');
 
         alert("✅ Success: Cloud database fully synchronized!");
     } catch (error) {

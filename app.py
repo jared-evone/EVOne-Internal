@@ -646,6 +646,35 @@ async def delete_product(product_id: str, _user: dict = Depends(get_current_user
         return {"error": True, "message": str(e)}
 
 
+class StockMovementCreate(BaseModel):
+    product_id: str
+    product_sku: str
+    product_name: str
+    type: str  # 'in' or 'out'
+    qty: int
+    reason: str | None = None
+    notes: str | None = None
+
+
+@app.get("/api/stock-movements")
+async def get_stock_movements(user: dict = Depends(get_current_user)):
+    try:
+        return {"movements": inventory.list_movements()}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/stock-movements")
+async def post_stock_movement(data: StockMovementCreate, user: dict = Depends(get_current_user)):
+    try:
+        movement = inventory.create_movement(data.model_dump(exclude_none=True))
+        return {"movement": movement}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
 # ==========================================
 # 8. Deals
 # ==========================================

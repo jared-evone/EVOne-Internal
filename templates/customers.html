@@ -65,6 +65,11 @@
 
             <div class="flex-1"></div>
 
+            <button onclick="exportCustomers()"
+                class="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export CSV
+            </button>
             <button onclick="openModal()"
                 class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
                 style="background:#1a3a2a">
@@ -105,6 +110,53 @@
         </div>
 
         <div id="tableError" class="hidden px-6 py-3 bg-red-50 text-red-700 text-sm border-t shrink-0"></div>
+    </div>
+</div>
+
+<!-- Customer Detail Panel -->
+<div id="detailBackdrop" class="hidden fixed inset-0 z-20" style="background:rgba(0,0,0,0.15)" onclick="closeDetailPanel()"></div>
+
+<div id="detailPanel" class="fixed top-0 right-0 h-full bg-white shadow-2xl z-30 flex flex-col"
+     style="width:22rem;transform:translateX(100%);transition:transform 0.2s ease">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 pt-6 pb-4 border-b shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0" id="panelAvatar"></div>
+            <div class="min-w-0">
+                <p class="font-bold text-gray-900 text-base leading-tight truncate" id="panelName">—</p>
+                <span id="panelTypeBadge" class="px-2 py-0.5 rounded-full text-xs font-semibold mt-0.5 inline-block"></span>
+            </div>
+        </div>
+        <button onclick="closeDetailPanel()"
+            class="w-8 h-8 flex items-center justify-center rounded-full border text-gray-400 hover:text-gray-600 transition text-lg leading-none shrink-0 ml-2">×</button>
+    </div>
+
+    <!-- Scrollable body -->
+    <div class="flex-1 overflow-y-auto">
+
+        <!-- Info rows -->
+        <div class="px-6 py-4 border-b space-y-1">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Customer Info</p>
+            <div id="panelInfoRows" class="space-y-2 text-sm"></div>
+        </div>
+
+        <!-- Associated deals -->
+        <div class="px-6 py-4">
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Deals <span id="panelDealCount" class="normal-case font-normal text-gray-400"></span>
+            </p>
+            <div id="panelDealsList" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="px-6 py-4 border-t shrink-0 flex gap-2">
+        <button onclick="closeDetailPanel()"
+            class="flex-1 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50 transition">Close</button>
+        <button onclick="openEditFromPanel()"
+            class="flex-1 text-white px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition"
+            style="background:#1a3a2a">Edit Customer</button>
     </div>
 </div>
 
@@ -241,9 +293,11 @@ const AVATAR_BG = ['#dcfce7','#dbeafe','#ede9fe','#fef9c3','#fce7f3','#e0f2fe','
 const AVATAR_FG = ['#166534','#1e40af','#5b21b6','#713f12','#9d174d','#075985','#9a3412'];
 
 let allCustomers    = [];
+let allDeals        = [];
 let activeTypeFilter = 'All';
 let selectedType    = 'Residential';
 let editingId       = null;
+let panelCustomer   = null;
 
 // ---- Helpers ----
 
@@ -291,6 +345,10 @@ async function onPageLoad() {
     buildTypePills();
     setModalType('Residential');
     await loadCustomers();
+    try {
+        const r = await fetch('/api/deals', { headers: getAuthHeaders() });
+        if (r.ok) { const d = await r.json(); if (!d.error) allDeals = d.deals || []; }
+    } catch (_) {}
 }
 
 // ---- Filter pills ----
@@ -433,7 +491,7 @@ function renderTable(customers) {
 
 function handleRowClick(event, id) {
     const customer = allCustomers.find(c => c.id === id);
-    if (customer) openEditModal(customer);
+    if (customer) openDetailPanel(customer);
 }
 
 function toggleAll(cb) {
@@ -581,5 +639,132 @@ function showModalError(msg) {
     const el = document.getElementById('modalError');
     el.textContent = msg;
     el.classList.remove('hidden');
+}
+
+// ---- Customer Detail Panel ----
+
+const PANEL_STAGE_CLS = {
+    Lead:        'bg-blue-100 text-blue-700',
+    Proposal:    'bg-purple-100 text-purple-700',
+    Negotiation: 'bg-amber-100 text-amber-700',
+    Won:         'bg-green-100 text-green-700',
+    Lost:        'bg-red-100 text-red-600',
+};
+
+function openDetailPanel(customer) {
+    panelCustomer = customer;
+
+    const initial = (customer.name || '?')[0].toUpperCase();
+    const av = document.getElementById('panelAvatar');
+    av.textContent = initial;
+    av.style.cssText = avatarStyle(customer.name);
+
+    document.getElementById('panelName').textContent = customer.name || '—';
+    const badge = document.getElementById('panelTypeBadge');
+    if (customer.type) {
+        badge.textContent = customer.type;
+        badge.style.cssText = (TYPE_BADGE_STYLE[customer.type] || 'background:#6b7280;color:#fff');
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+
+    const infoFields = [
+        ['Attention To', customer.attention_to],
+        ['Email',        customer.email],
+        ['Phone',        customer.phone],
+        ['Address',      customer.address],
+        ['Lead Source',  customer.lead_source],
+        ['Status',       customer.status ? customer.status.charAt(0).toUpperCase() + customer.status.slice(1) : null],
+        ['Joined',       (customer.joined_at || customer.created_at || '').split('T')[0] || null],
+        ['Notes',        customer.notes],
+    ].filter(([, v]) => v);
+
+    document.getElementById('panelInfoRows').innerHTML = infoFields.length
+        ? infoFields.map(([label, value]) => `
+            <div class="flex gap-2">
+                <span class="text-gray-400 w-24 shrink-0 text-xs pt-0.5">${esc(label)}</span>
+                <span class="text-gray-800 break-words text-sm">${esc(value)}</span>
+            </div>`).join('')
+        : '<p class="text-gray-400 text-sm">No additional info.</p>';
+
+    const customerDeals = allDeals.filter(d =>
+        (customer.id && d.customer_id === customer.id) ||
+        (customer.name && d.customer_name &&
+            d.customer_name.toLowerCase() === customer.name.toLowerCase())
+    );
+
+    document.getElementById('panelDealCount').textContent =
+        customerDeals.length ? `(${customerDeals.length})` : '';
+
+    document.getElementById('panelDealsList').innerHTML = customerDeals.length
+        ? customerDeals.map(d => {
+            const cls = PANEL_STAGE_CLS[d.stage] || 'bg-gray-100 text-gray-500';
+            return `
+            <div class="p-3 border rounded-xl hover:bg-gray-50 transition">
+                <div class="flex items-start justify-between gap-2">
+                    <p class="font-medium text-gray-800 text-sm leading-tight">${esc(d.title)}</p>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${cls}">${esc(d.stage)}</span>
+                </div>
+                <div class="flex items-center gap-2 mt-1.5 text-xs text-gray-400 flex-wrap">
+                    ${d.type ? `<span>${esc(d.type)}</span><span>·</span>` : ''}
+                    <span class="font-semibold text-gray-700">SGD ${Number(d.value || 0).toLocaleString()}</span>
+                    ${d.expected_close ? `<span>· closes ${esc(d.expected_close)}</span>` : ''}
+                </div>
+            </div>`;
+          }).join('')
+        : '<p class="text-sm text-gray-400">No deals linked to this customer.</p>';
+
+    document.getElementById('detailPanel').style.transform = 'translateX(0)';
+    document.getElementById('detailBackdrop').classList.remove('hidden');
+}
+
+function closeDetailPanel() {
+    document.getElementById('detailPanel').style.transform = 'translateX(100%)';
+    document.getElementById('detailBackdrop').classList.add('hidden');
+    panelCustomer = null;
+}
+
+function openEditFromPanel() {
+    const c = panelCustomer;
+    closeDetailPanel();
+    if (c) openEditModal(c);
+}
+
+// ---- CSV Export ----
+
+function downloadCSV(rows, filename) {
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function exportCustomers() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const from   = document.getElementById('dateFrom').value;
+    const to     = document.getElementById('dateTo').value;
+    const filtered = allCustomers.filter(c => {
+        if (activeTypeFilter !== 'All' && c.type !== activeTypeFilter) return false;
+        if (search) {
+            const hay = `${c.name} ${c.email||''} ${c.phone||''} ${c.attention_to||''}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        const joined = (c.joined_at || c.created_at || '').split('T')[0];
+        if (from && joined < from) return false;
+        if (to   && joined > to)   return false;
+        return true;
+    });
+    const headers = ['Name', 'Attention To', 'Email', 'Phone', 'Type', 'Lead Source', 'Status', 'Joined', 'Address', 'Notes'];
+    const rows = filtered.map(c => [
+        c.name, c.attention_to || '', c.email || '', c.phone || '',
+        c.type || '', c.lead_source || '', c.status || '',
+        (c.joined_at || c.created_at || '').split('T')[0],
+        c.address || '', c.notes || '',
+    ]);
+    downloadCSV([headers, ...rows], `evone_customers_${new Date().toISOString().split('T')[0]}.csv`);
 }
 {% endblock %}

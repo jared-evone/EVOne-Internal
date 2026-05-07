@@ -63,6 +63,11 @@
 
             <div class="flex-1"></div>
 
+            <button onclick="exportDeals()"
+                class="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export CSV
+            </button>
             <button onclick="openModal()"
                 class="shrink-0 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition"
                 style="background:#1a3a2a">
@@ -540,5 +545,40 @@ function showModalError(msg) {
     const el = document.getElementById('modalError');
     el.textContent = msg;
     el.classList.remove('hidden');
+}
+
+// ---- CSV Export ----
+
+function downloadCSV(rows, filename) {
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function exportDeals() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allDeals.filter(d => {
+        if (activeStage !== 'All' && d.stage !== activeStage) return false;
+        if (search) {
+            const hay = `${d.title} ${d.customer_name || ''} ${d.type || ''}`.toLowerCase();
+            if (!hay.includes(search)) return false;
+        }
+        return true;
+    });
+    const headers = ['Title', 'Customer', 'Type', 'Value (SGD)', 'Stage', 'Expected Close', 'Closed Date', 'Created', 'Notes'];
+    const rows = filtered.map(d => [
+        d.title, d.customer_name || '', d.type || '',
+        parseFloat(d.value) || 0,
+        d.stage,
+        d.expected_close || '',
+        d.closed_at || '',
+        (d.created_at || '').split('T')[0],
+        d.notes || '',
+    ]);
+    downloadCSV([headers, ...rows], `evone_deals_${new Date().toISOString().split('T')[0]}.csv`);
 }
 {% endblock %}
