@@ -14,18 +14,42 @@
         .tab-content.hidden { display: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Sidebar active state */
+        .nav-active { background: rgba(0,173,95,0.13) !important; border-left: 3px solid #00ad5f; padding-left: calc(1rem - 3px); }
+        .nav-active span { color: #fff !important; }
+        /* Toast animations */
+        @keyframes _tIn  { from { opacity:0; transform:translateX(110%); } to { opacity:1; transform:translateX(0); } }
+        @keyframes _tOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(110%); } }
+        .t-in  { animation: _tIn  .2s ease forwards; }
+        .t-out { animation: _tOut .2s ease forwards; }
         {% block extra_css %}{% endblock %}
     </style>
 </head>
 <body class="bg-gray-50 h-screen overflow-hidden flex font-sans">
 
-    <div id="loginOverlay" class="fixed inset-0 bg-gray-900 z-50 flex justify-center items-center">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-96">
-            <h2 class="text-2xl font-bold text-center text-evgreen mb-6">EVOne Login</h2>
-            <div class="space-y-4">
-                <input type="email" id="email" placeholder="Email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-evgreen outline-none">
-                <input type="password" id="password" placeholder="Password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-evgreen outline-none">
-                <button onclick="login()" class="w-full bg-evgreen text-white font-bold py-2 rounded-lg hover:bg-green-600 transition">Sign In</button>
+    <!-- Toast stack -->
+    <div id="_toasts" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"
+         style="min-width:260px;max-width:340px"></div>
+
+    <div id="loginOverlay" class="fixed inset-0 z-50 flex justify-center items-center"
+         style="background:rgba(15,23,42,0.94)">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-96">
+            <div class="flex justify-center items-baseline gap-1.5 mb-1.5">
+                <span class="text-3xl font-black tracking-wider" style="color:#00ad5f">EVOne</span>
+                <span class="text-sm font-semibold text-gray-400">OPS</span>
+            </div>
+            <p class="text-center text-sm text-gray-400 mb-6">Sign in to your workspace</p>
+            <div class="space-y-3">
+                <input type="email" id="email" placeholder="Email"
+                    class="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-evgreen"
+                    onkeydown="if(event.key==='Enter')document.getElementById('password').focus()">
+                <input type="password" id="password" placeholder="Password"
+                    class="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-evgreen"
+                    onkeydown="if(event.key==='Enter')login()">
+                <p id="loginError" class="hidden text-red-500 text-xs px-1"></p>
+                <button id="loginBtn" onclick="login()"
+                    class="w-full text-white font-bold py-2.5 rounded-xl text-sm hover:opacity-90 transition"
+                    style="background:#00ad5f">Sign In</button>
             </div>
         </div>
     </div>
@@ -57,6 +81,9 @@
             <a href="/deals" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
                 <span class="font-medium">Deals</span>
             </a>
+            <a href="/team" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
+                <span class="font-medium">Team Members</span>
+            </a>
         </nav>
         <div class="p-4 border-t border-gray-800 flex items-center justify-between bg-gray-900">
             <div class="flex items-center">
@@ -75,34 +102,60 @@
 
     <script>
         let supabaseClient;
-        
+
+        // ── Toast notification system ─────────────────────────────────────────────
+        window.showToast = function(message, type) {
+            type = type || 'info';
+            const stack = document.getElementById('_toasts');
+            const styles = {
+                success: { bg:'#f0fdf4', border:'#86efac', text:'#166534',
+                    icon:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>' },
+                error:   { bg:'#fef2f2', border:'#fca5a5', text:'#991b1b',
+                    icon:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>' },
+                warning: { bg:'#fffbeb', border:'#fcd34d', text:'#92400e',
+                    icon:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>' },
+                info:    { bg:'#eff6ff', border:'#93c5fd', text:'#1e40af',
+                    icon:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>' },
+            };
+            const p = styles[type] || styles.info;
+            const el = document.createElement('div');
+            el.className = 't-in pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium cursor-pointer';
+            el.style.cssText = `background:${p.bg};border-color:${p.border};color:${p.text}`;
+            el.innerHTML = `<svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">${p.icon}</svg><span class="flex-1 leading-snug">${message}</span>`;
+            stack.appendChild(el);
+            let gone = false;
+            function dismiss() {
+                if (gone) return; gone = true;
+                el.classList.replace('t-in', 't-out');
+                setTimeout(() => el.remove(), 200);
+            }
+            const tid = setTimeout(dismiss, 3800);
+            el.onclick = () => { clearTimeout(tid); dismiss(); };
+        };
+
+        // ── Supabase ──────────────────────────────────────────────────────────────
         async function initSupabase() {
-            const res = await fetch('/config');
+            const res    = await fetch('/config');
             const config = await res.json();
             supabaseClient = supabase.createClient(config.supabase_url, config.supabase_key);
-
-            // Keep evone_token in sync with Supabase's own auto-refresh cycle
             supabaseClient.auth.onAuthStateChange((_event, session) => {
-                if (session && session.access_token) {
+                if (session && session.access_token)
                     localStorage.setItem('evone_token', session.access_token);
-                }
             });
-
-            // Immediately refresh so evone_token is valid before the first API call
             try {
                 const { data: { session } } = await supabaseClient.auth.getSession();
-                if (session && session.access_token) {
+                if (session && session.access_token)
                     localStorage.setItem('evone_token', session.access_token);
-                }
             } catch (_) {}
         }
 
         function checkAuth() {
             const token = localStorage.getItem('evone_token');
-            const email = localStorage.getItem('evone_email');
+            const email = localStorage.getItem('evone_email') || '';
             if (token) {
                 document.getElementById('loginOverlay').style.display = 'none';
-                document.getElementById('userNameDisplay').innerText = email;
+                document.getElementById('avatarIcon').textContent = (email.charAt(0) || '?').toUpperCase();
+                document.getElementById('userNameDisplay').textContent = email || 'User';
             }
         }
 
@@ -114,11 +167,18 @@
         }
 
         async function login() {
-            const email = document.getElementById('email').value;
-            const pwd = document.getElementById('password').value;
+            const email  = document.getElementById('email').value.trim();
+            const pwd    = document.getElementById('password').value;
+            const errEl  = document.getElementById('loginError');
+            const btn    = document.getElementById('loginBtn');
+            errEl.classList.add('hidden');
+            btn.disabled = true; btn.textContent = 'Signing in…';
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password: pwd });
-            if (error) alert(error.message);
-            else {
+            btn.disabled = false; btn.textContent = 'Sign In';
+            if (error) {
+                errEl.textContent = error.message;
+                errEl.classList.remove('hidden');
+            } else {
                 localStorage.setItem('evone_token', data.session.access_token);
                 localStorage.setItem('evone_email', data.user.email);
                 location.reload();
@@ -126,17 +186,28 @@
         }
 
         async function logout() {
+            try { await supabaseClient.auth.signOut(); } catch (_) {}
             localStorage.clear();
             location.reload();
+        }
+
+        // ── Active nav highlight ──────────────────────────────────────────────────
+        function markActiveNav() {
+            const path = window.location.pathname.replace(/\/$/, '') || '/';
+            document.querySelectorAll('aside nav a').forEach(a => {
+                const href = (a.getAttribute('href') || '/').replace(/\/$/, '') || '/';
+                const hit  = href === '/' ? path === '/' : path === href || path.startsWith(href + '/');
+                if (hit) a.classList.add('nav-active');
+            });
         }
 
         window.onload = async () => {
             await initSupabase();
             checkAuth();
+            markActiveNav();
             if (typeof onPageLoad === 'function') onPageLoad();
         };
 
-        // 子页面 JS 插入点
         {% block extra_js %}{% endblock %}
     </script>
 </body>

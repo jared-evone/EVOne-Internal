@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}Team Members – EVOne OPS{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 max-w-4xl">
+
+    <div class="flex justify-between items-end mb-8 border-b border-gray-200 pb-4">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">Team Members</h2>
+            <p class="text-sm text-gray-400 mt-0.5">Manage user access and roles</p>
+        </div>
+        <button id="inviteBtn" onclick="openInviteModal()"
+            class="hidden bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">
+            + Invite User
+        </button>
+    </div>
+
+    <!-- Access denied (non-admin) -->
+    <div id="accessDenied" class="hidden flex flex-col items-center justify-center py-24 text-center">
+        <svg class="w-14 h-14 text-gray-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+        <p class="text-lg font-bold text-gray-400">Access Restricted</p>
+        <p class="text-sm text-gray-300 mt-1">Only administrators can manage team members.</p>
+    </div>
+
+    <!-- Users table -->
+    <div id="usersSection" class="hidden bg-white shadow-lg rounded-xl overflow-hidden border border-gray-100">
+        <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+            <h3 class="font-bold text-gray-700">Members</h3>
+            <span id="memberCount" class="text-xs text-gray-400 font-medium"></span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Member</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Last Sign-in</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Joined</th>
+                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersList" class="divide-y divide-gray-100 text-sm bg-white">
+                    <tr>
+                        <td colspan="5" class="py-16 text-center">
+                            <div class="inline-flex flex-col items-center gap-3 text-gray-400">
+                                <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                <span class="text-sm">Loading team members…</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Invite Modal -->
+<div id="inviteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex justify-between items-center mb-5">
+            <h3 class="text-lg font-bold text-gray-800">Invite New Member</h3>
+            <button onclick="closeInviteModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <form id="inviteForm" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Email Address *</label>
+                <input type="email" id="inviteEmail" required placeholder="colleague@evone.com.sg"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Role</label>
+                <select id="inviteRole"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <option value="3">Read Only — Can view all data</option>
+                    <option value="2">Finance — Can manage billing</option>
+                    <option value="1">Admin — Full access</option>
+                </select>
+            </div>
+            <div id="inviteError" class="hidden text-red-600 text-sm font-bold rounded-lg bg-red-50 px-3 py-2"></div>
+            <div class="flex justify-end gap-3 pt-1">
+                <button type="button" onclick="closeInviteModal()"
+                    class="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                <button type="submit" id="inviteSubmitBtn"
+                    class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">
+                    Send Invite
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const ROLES = {
+    1: { label: 'Admin',     color: 'bg-indigo-100 text-indigo-700' },
+    2: { label: 'Finance',   color: 'bg-blue-100 text-blue-700' },
+    3: { label: 'Read Only', color: 'bg-gray-100 text-gray-600' },
+};
+
+let currentUserId = null;
+
+function parseJwtSub(token) {
+    try { return JSON.parse(atob(token.split('.')[1])).sub; } catch { return null; }
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadUsers() {
+    const token = localStorage.getItem('evone_token');
+    currentUserId = parseJwtSub(token);
+    const headers = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
+
+    try {
+        const res = await fetch('/api/users', { headers });
+
+        if (res.status === 403) {
+            document.getElementById('accessDenied').classList.remove('hidden');
+            return;
+        }
+        if (!res.ok) throw new Error('Server error');
+
+        const data = await res.json();
+        const users = data.users || [];
+
+        document.getElementById('usersSection').classList.remove('hidden');
+        document.getElementById('inviteBtn').classList.remove('hidden');
+        document.getElementById('memberCount').textContent = `${users.length} member${users.length !== 1 ? 's' : ''}`;
+        renderUsers(users);
+
+    } catch (e) {
+        document.getElementById('usersSection').classList.remove('hidden');
+        document.getElementById('usersList').innerHTML = `
+            <tr><td colspan="5" class="py-10 text-center text-red-500 font-bold">Failed to load team members.</td></tr>`;
+    }
+}
+
+function renderUsers(users) {
+    const tbody = document.getElementById('usersList');
+
+    if (users.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="5" class="py-16 text-center">
+                <div class="inline-flex flex-col items-center gap-2">
+                    <svg class="w-10 h-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <p class="text-sm font-medium text-gray-400">No team members found</p>
+                    <p class="text-xs text-gray-300">Invite someone to get started</p>
+                </div>
+            </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+        const isSelf   = u.id === currentUserId;
+        const initial  = (u.email.charAt(0) || '?').toUpperCase();
+        const role     = ROLES[u.role_id] || ROLES[3];
+        const roleOpts = [1, 2, 3].map(id =>
+            `<option value="${id}" ${u.role_id === id ? 'selected' : ''}>${ROLES[id].label}</option>`
+        ).join('');
+
+        return `
+            <tr class="hover:bg-gray-50 transition">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0
+                            ${isSelf ? 'bg-evgreen text-white' : 'bg-indigo-100 text-indigo-700'}">
+                            ${initial}
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-900">${escapeHtml(u.email)}</p>
+                            ${isSelf ? '<p class="text-xs text-gray-400">You</p>' : ''}
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <select data-uid="${u.id}" data-prev="${u.role_id}"
+                            onchange="updateRole(this)"
+                            class="text-xs font-bold px-2.5 py-1 rounded-full border-0 outline-none cursor-pointer ${role.color}"
+                            ${isSelf ? 'disabled title="Cannot change your own role"' : ''}>
+                        ${roleOpts}
+                    </select>
+                </td>
+                <td class="px-6 py-4 text-xs text-gray-500">${fmtDate(u.last_sign_in_at)}</td>
+                <td class="px-6 py-4 text-xs text-gray-500">${fmtDate(u.created_at)}</td>
+                <td class="px-6 py-4 text-right">
+                    ${isSelf
+                        ? '<span class="text-xs text-gray-300 italic">—</span>'
+                        : `<button onclick="removeUser('${u.id}', '${escapeHtml(u.email)}')"
+                                class="text-xs font-bold text-red-400 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50">
+                                Remove
+                           </button>`
+                    }
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+async function updateRole(selectEl) {
+    const userId   = selectEl.dataset.uid;
+    const newRole  = parseInt(selectEl.value);
+    const prevRole = parseInt(selectEl.dataset.prev);
+    const token    = localStorage.getItem('evone_token');
+    const headers  = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
+
+    try {
+        const res = await fetch(`/api/users/${userId}/role`, {
+            method: 'PATCH', headers,
+            body: JSON.stringify({ role_id: newRole }),
+        });
+        if (!res.ok) throw new Error('Failed');
+
+        selectEl.dataset.prev = newRole;
+        const role = ROLES[newRole] || ROLES[3];
+        selectEl.className = `text-xs font-bold px-2.5 py-1 rounded-full border-0 outline-none cursor-pointer ${role.color}`;
+        showToast(`Role updated to ${role.label}.`, 'success');
+    } catch {
+        selectEl.value = prevRole;
+        showToast('Failed to update role — please try again.', 'error');
+    }
+}
+
+async function removeUser(userId, email) {
+    if (!confirm(`Remove ${email}?\n\nThis will permanently delete their account and cannot be undone.`)) return;
+
+    const token   = localStorage.getItem('evone_token');
+    const headers = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
+
+    try {
+        const res = await fetch(`/api/users/${userId}`, { method: 'DELETE', headers });
+        if (!res.ok) throw new Error('Failed');
+        showToast(`${email} has been removed.`, 'success');
+        loadUsers();
+    } catch {
+        showToast('Failed to remove user — please try again.', 'error');
+    }
+}
+
+function openInviteModal() {
+    document.getElementById('inviteEmail').value = '';
+    document.getElementById('inviteRole').value  = '3';
+    document.getElementById('inviteError').classList.add('hidden');
+    document.getElementById('inviteModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('inviteEmail').focus(), 50);
+}
+
+function closeInviteModal() {
+    document.getElementById('inviteModal').classList.add('hidden');
+}
+
+document.getElementById('inviteForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email  = document.getElementById('inviteEmail').value.trim();
+    const roleId = parseInt(document.getElementById('inviteRole').value);
+    const btn    = document.getElementById('inviteSubmitBtn');
+    const errEl  = document.getElementById('inviteError');
+
+    errEl.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Sending…';
+
+    const token   = localStorage.getItem('evone_token');
+    const headers = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
+
+    try {
+        const res  = await fetch('/api/users/invite', {
+            method: 'POST', headers,
+            body: JSON.stringify({ email, role_id: roleId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.detail || 'Invite failed — please try again.';
+            errEl.classList.remove('hidden');
+        } else {
+            closeInviteModal();
+            showToast(`Invite sent to ${email}.`, 'success');
+            loadUsers();
+        }
+    } catch {
+        errEl.textContent = 'Network error — please check your connection.';
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Send Invite';
+    }
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeInviteModal();
+});
+
+loadUsers();
+</script>
+{% endblock %}

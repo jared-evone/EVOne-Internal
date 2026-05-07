@@ -329,8 +329,8 @@ window.saveRow = function(btn) {
         const compName = compInput ? compInput.value.trim() : tr.cells[1].innerText.trim();
         
         if (compName && !window.getValidCompanies().has(compName.toLowerCase())) {
-            alert(`【校验失败】公司 "${compName}" 尚未建档！\n请先切换到 "1. Tiered Tariff" 页面添加该公司。`);
-            return; // 拦截！不允许保存
+            showToast(`Company "${compName}" is not in the Tiered Tariff. Add it there first.`, 'warning');
+            return;
         }
     }
 
@@ -396,11 +396,10 @@ window.addRow = function(id, type) {
 window.openBatchModal = function(type) {
     const selectId = type === 'gp' ? 'batchGpCompany' : 'batchSpCompany';
     const company = document.getElementById(selectId).value.trim();
-    if (!company) { alert("Please type or select a Target Company first."); return; }
+    if (!company) { showToast('Please select a Target Company first.', 'warning'); return; }
 
-    // 前置拦截：打开批量添加窗口前强制校验
     if (!window.getValidCompanies().has(company.toLowerCase())) {
-        alert(`【校验失败】公司 "${company}" 尚未建档！\n请先切换到 "1. Tiered Tariff" 页面添加该公司。`);
+        showToast(`Company "${company}" is not in the Tiered Tariff. Add it there first.`, 'warning');
         return;
     }
 
@@ -422,11 +421,10 @@ window.submitBatchModal = function() {
     const text = document.getElementById('batchModalTextarea').value;
     const items = text.split('\n').map(item => item.trim()).filter(item => item !== '');
 
-    if (items.length === 0) { alert("Please enter at least one item."); return; }
+    if (items.length === 0) { showToast('Please enter at least one item.', 'warning'); return; }
 
-    // 双保险拦截
     if (!window.getValidCompanies().has(company.toLowerCase())) {
-        alert(`【校验失败】公司 "${company}" 尚未建档！\n请先切换到 "1. Tiered Tariff" 页面添加该公司。`);
+        showToast(`Company "${company}" is not in the Tiered Tariff. Add it there first.`, 'warning');
         return;
     }
 
@@ -451,7 +449,7 @@ window.submitBatchModal = function() {
     );
     window._setSaveStatus('saving');
     supabaseClient.schema('evone_billing').from(table).insert(toInsert).then(({ error }) => {
-        if (error) { window._setSaveStatus('error'); alert('Save failed: ' + error.message); }
+        if (error) { window._setSaveStatus('error'); showToast('Save failed: ' + error.message, 'error'); }
         else window._setSaveStatus('saved');
     });
 };
@@ -459,7 +457,7 @@ window.submitBatchModal = function() {
 window.openManageModal = function(type) {
     const selectId = type === 'gp' ? 'batchGpCompany' : 'batchSpCompany';
     const company = document.getElementById(selectId).value.trim();
-    if (!company) { alert("Please type or select a Target Company first."); return; }
+    if (!company) { showToast('Please select a Target Company first.', 'warning'); return; }
 
     window.currentManageType = type;
     window.currentManageCompany = company;
@@ -545,14 +543,14 @@ window.saveManageModal = function() {
     window._setSaveStatus('saving');
     supabaseClient.schema('evone_billing').from(table).delete().eq('company_name', savedCompany)
         .then(({ error }) => {
-            if (error) { window._setSaveStatus('error'); alert('Delete failed: ' + error.message); return; }
+            if (error) { window._setSaveStatus('error'); showToast('Delete failed: ' + error.message, 'error'); return; }
             if (!newValues.length) { window._setSaveStatus('saved'); return; }
             const toInsert = newValues.map(val => savedType === 'gp'
                 ? { vehicle_plate: val.toUpperCase(), company_name: savedCompany }
                 : { driver_email: val.toLowerCase(), company_name: savedCompany }
             );
             supabaseClient.schema('evone_billing').from(table).insert(toInsert).then(({ error: e2 }) => {
-                if (e2) { window._setSaveStatus('error'); alert('Insert failed: ' + e2.message); }
+                if (e2) { window._setSaveStatus('error'); showToast('Insert failed: ' + e2.message, 'error'); }
                 else window._setSaveStatus('saved');
             });
         });
@@ -613,7 +611,7 @@ window._autoSave = async function(tbodyId, tr, origKey) {
         window._setSaveStatus('saved');
     } catch (e) {
         window._setSaveStatus('error');
-        alert('Save failed: ' + (e.message || JSON.stringify(e)));
+        showToast('Save failed: ' + (e.message || JSON.stringify(e)), 'error');
     }
 };
 
@@ -633,7 +631,7 @@ window._autoDelete = async function(tbodyId, key) {
         window._setSaveStatus('saved');
     } catch (e) {
         window._setSaveStatus('error');
-        alert('Delete failed: ' + (e.message || JSON.stringify(e)));
+        showToast('Delete failed: ' + (e.message || JSON.stringify(e)), 'error');
     }
 };
 
@@ -722,7 +720,7 @@ window.restoreFromBackup = function(input) {
         try {
             const backup = JSON.parse(e.target.result);
             if (!backup.pricing_rates || !backup.gp_crm || !backup.sp_crm) {
-                alert("Invalid backup file."); return;
+                showToast('Invalid backup file — missing required sections.', 'error'); return;
             }
             const backedUpAt = backup.backed_up_at ? new Date(backup.backed_up_at).toLocaleString() : 'unknown time';
             if (!confirm(`Restore backup from ${backedUpAt}?\n\nThis will overwrite the current page data. Click "Sync to Cloud" afterwards to persist.`)) return;
@@ -749,12 +747,12 @@ window.restoreFromBackup = function(input) {
             window.filterTable('gp');
             window.filterTable('sp');
             window._fullSync().then(() => {
-                alert(`Backup restored and synced (${backedUpAt}).`);
+                showToast(`Backup restored and synced (${backedUpAt}).`, 'success');
             }).catch(err => {
-                alert('Backup restored to page but cloud sync failed: ' + err.message);
+                showToast('Backup restored to page but cloud sync failed: ' + err.message, 'warning');
             });
         } catch(err) {
-            alert("Failed to parse backup file: " + err.message);
+            showToast('Failed to parse backup file: ' + err.message, 'error');
         }
     };
     reader.readAsText(file);
@@ -780,7 +778,7 @@ window.htmlTableToExcelBlob = function(id, headers) {
 
 window.submitToFastAPI = async function() {
     if(document.querySelectorAll('.editing-row').length > 0) {
-        alert("Please Save all editing rows before generating invoices.");
+        showToast('Please save all editing rows before generating invoices.', 'warning');
         window.switchTab('tab2'); return;
     }
 
@@ -804,16 +802,14 @@ window.submitToFastAPI = async function() {
     });
 
     if (invalidRecords.length > 0) {
-        alert("【数据校验失败】\n\n以下车辆或司机的归属公司在“Tiered Tariff (费率表)”中未建档，请先在费率表中添加这些公司：\n\n" + 
-              invalidRecords.slice(0, 5).join('\n') + 
-              (invalidRecords.length > 5 ? `\n...以及其他 ${invalidRecords.length - 5} 条记录。` : ''));
+        showToast(`${invalidRecords.length} record(s) have companies not in the Tiered Tariff. Fix the CRM tab first.`, 'warning');
         window.switchTab('tab2');
         return;
     }
 
     const spTx = document.getElementById('spTxFile').files[0];
     const gpTx = document.getElementById('gpTxFile').files[0];
-    if (!spTx || !gpTx) { alert("Action Required: Please upload both SP and GP transaction reports first."); window.switchTab('tab1'); return; }
+    if (!spTx || !gpTx) { showToast('Please upload both SP and GP transaction reports first.', 'warning'); window.switchTab('tab1'); return; }
 
     const btn = document.getElementById('generateBtn');
     const loader = document.getElementById('loadingMsg');
@@ -840,9 +836,9 @@ window.submitToFastAPI = async function() {
         } else {
             let errorMessage = "Unknown Server Error";
             try { errorMessage = (await response.json()).message || errorMessage; } catch(e) { errorMessage = await response.text() || errorMessage; }
-            alert("Processing Error: " + errorMessage);
+            showToast('Processing error: ' + errorMessage, 'error');
         }
-    } catch (e) { alert("Network Error: Verification failed."); } 
+    } catch (e) { showToast('Network error — please check your connection.', 'error'); }
     finally { btn.classList.remove('hidden'); loader.classList.add('hidden'); }
 };
 {% endblock %}

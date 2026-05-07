@@ -28,6 +28,7 @@ from services.supabase_client import (
     list_bucket,
     signed_url,
     upload_to_bucket,
+    supabase_admin,
 )
 
 warnings.filterwarnings('ignore')
@@ -757,3 +758,92 @@ async def delete_deal(deal_id: str, _user: dict = Depends(get_current_user)):
         return deals.delete_deal(deal_id)
     except Exception as e:
         return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 9. User Management (Admin Only)
+# ==========================================
+
+class UpdateRolePayload(BaseModel):
+    role_id: int
+
+
+class InviteUserPayload(BaseModel):
+    email: str
+    role_id: int = 3
+
+
+@app.get("/team")
+async def serve_team(request: Request):
+    return templates.TemplateResponse(request=request, name="users.html")
+
+
+@app.get("/api/users")
+async def list_team_users(user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        auth_users = supabase_admin.auth.admin.list_users()
+        roles_res = supabase_admin.schema("evone_billing").table("users").select("id,role_id").execute()
+        role_map = {r["id"]: r["role_id"] for r in (roles_res.data or [])}
+
+        result = []
+        for u in auth_users:
+            if not u.email:
+                continue
+            result.append({
+                "id": u.id,
+                "email": u.email,
+                "last_sign_in_at": u.last_sign_in_at.isoformat() if u.last_sign_in_at else None,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "role_id": role_map.get(u.id, 3),
+            })
+        result.sort(key=lambda x: x["created_at"] or "")
+        return {"users": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/users/{user_id}/role")
+async def update_user_role(user_id: str, payload: UpdateRolePayload, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if payload.role_id not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail="role_id must be 1, 2, or 3")
+    try:
+        supabase_admin.schema("evone_billing").table("users").upsert(
+            {"id": user_id, "role_id": payload.role_id}, on_conflict="id"
+        ).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/users/invite")
+async def invite_team_user(payload: InviteUserPayload, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        res = supabase_admin.auth.admin.invite_user_by_email(payload.email)
+        new_user = res.user if hasattr(res, "user") else res
+        if new_user and new_user.id:
+            supabase_admin.schema("evone_billing").table("users").upsert(
+                {"id": new_user.id, "role_id": payload.role_id}, on_conflict="id"
+            ).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/users/{user_id}")
+async def delete_team_user(user_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if user.get("sub") == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    try:
+        supabase_admin.auth.admin.delete_user(user_id)
+        supabase_admin.schema("evone_billing").table("users").delete().eq("id", user_id).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

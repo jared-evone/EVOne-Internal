@@ -296,13 +296,13 @@ async function resendEmail(submitterId, btnElement) {
             btnElement.classList.replace("text-gray-600", "text-green-600");
             btnElement.classList.replace("bg-gray-100", "bg-green-50");
         } else {
-            alert("Resend failed: " + (data.message || "Unknown error from DocuSeal"));
+            showToast('Resend failed: ' + (data.message || 'Unknown error'), 'error');
             btnElement.innerText = originalText;
             btnElement.disabled = false;
             btnElement.classList.remove("opacity-50", "cursor-not-allowed");
         }
     } catch (e) {
-        alert("Network Error: Cannot connect to internal server.");
+        showToast('Network error — cannot connect to server.', 'error');
         btnElement.innerText = originalText;
         btnElement.disabled = false;
         btnElement.classList.remove("opacity-50", "cursor-not-allowed");
@@ -315,8 +315,8 @@ async function downloadAndSync(subId) {
     const result = await res.json();
     if (result.download_url) {
         window.open(result.download_url, '_blank');
-        alert('Document Synced to Supabase Storage Successfully.');
-    } else { alert('Error: ' + (result.message || 'Processing...')); }
+        showToast('Document synced to Supabase Storage successfully.', 'success');
+    } else { showToast('Error: ' + (result.message || 'Processing failed'), 'error'); }
 }
 
 document.getElementById('signForm').addEventListener('submit', async (e) => {
@@ -357,11 +357,11 @@ document.getElementById('signForm').addEventListener('submit', async (e) => {
         const res = await fetch('/api/create-signature', { method: 'POST', headers, body: JSON.stringify(payload) });
         const result = await res.json();
         if (!result.error) {
-            alert('Workflow Successfully Created!');
+            showToast('Signing workflow created successfully!', 'success');
             document.getElementById('signForm').reset();
             updateSignerOptions();
-        } else { alert('Submission Failed: ' + result.message); }
-    } catch (err) { alert('Network or server error during submission.'); }
+        } else { showToast('Submission failed: ' + result.message, 'error'); }
+    } catch (err) { showToast('Network or server error during submission.', 'error'); }
 });
 
 updateSignerOptions();

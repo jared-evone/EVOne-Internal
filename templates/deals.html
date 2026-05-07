@@ -102,7 +102,15 @@
                     </tr>
                 </thead>
                 <tbody id="dealTableBody">
-                    <tr><td colspan="8" class="text-center py-12 text-gray-400">Loading...</td></tr>
+                    <tr><td colspan="8" class="py-16 text-center">
+                        <div class="inline-flex flex-col items-center gap-3 text-gray-400">
+                            <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            <span class="text-sm">Loading deals…</span>
+                        </div>
+                    </td></tr>
                 </tbody>
             </table>
         </div>
@@ -361,7 +369,16 @@ function applyFilters() {
 function renderTable(dealList) {
     const tbody = document.getElementById('dealTableBody');
     if (!dealList.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12 text-gray-400">No deals found.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="8" class="py-16 text-center">
+            <div class="inline-flex flex-col items-center gap-2">
+                <svg class="w-10 h-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                <p class="text-sm font-medium text-gray-400">No deals found</p>
+                <p class="text-xs text-gray-300">Try adjusting your filters or create a new deal</p>
+            </div>
+        </td></tr>`;
         return;
     }
     tbody.innerHTML = dealList.map(d => {
@@ -431,8 +448,10 @@ async function deleteSelected() {
                 applyFilters();
             }
         }
+        showToast(`${ids.length} deal(s) deleted.`, 'success');
     } catch (e) {
         showTableError(e.message);
+        showToast('Delete failed: ' + e.message, 'error');
     }
 }
 
@@ -526,6 +545,7 @@ async function submitDeal() {
         const res  = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.error) throw new Error(data.message);
+        const action = editingDealId ? 'updated' : 'created';
         closeModal();
         const dd = await fetch('/api/deals', { headers: getAuthHeaders() });
         if (dd.ok) {
@@ -536,6 +556,7 @@ async function submitDeal() {
                 applyFilters();
             }
         }
+        showToast(`Deal ${action} successfully.`, 'success');
     } catch (e) {
         showModalError(e.message);
     }

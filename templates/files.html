@@ -164,10 +164,10 @@ async function downloadFile(filename) {
         if (data.url) {
             window.open(data.url, '_blank');
         } else {
-            alert("File access error.");
+            showToast('File access error — cannot retrieve download URL.', 'error');
         }
     } catch (e) {
-        alert("Network error.");
+        showToast('Network error — cannot connect to server.', 'error');
     }
 }
 
@@ -183,7 +183,7 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     const file = fileInput.files[0];
 
     if (file.size > 20 * 1024 * 1024) {
-        alert("File is too large. Limit is 20MB.");
+        showToast('File is too large — maximum size is 20 MB.', 'warning');
         return;
     }
 

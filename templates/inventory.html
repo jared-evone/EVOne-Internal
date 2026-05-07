@@ -110,7 +110,15 @@
                     </tr>
                 </thead>
                 <tbody id="productTableBody">
-                    <tr><td colspan="9" class="text-center py-12 text-gray-400">Loading...</td></tr>
+                    <tr><td colspan="9" class="py-16 text-center">
+                        <div class="inline-flex flex-col items-center gap-3 text-gray-400">
+                            <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            <span class="text-sm">Loading products…</span>
+                        </div>
+                    </td></tr>
                 </tbody>
             </table>
         </div>
@@ -523,7 +531,16 @@ function applyFilters() {
 function renderTable(products) {
     const tbody = document.getElementById('productTableBody');
     if (!products.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-12 text-gray-400">No products found.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="9" class="py-16 text-center">
+            <div class="inline-flex flex-col items-center gap-2">
+                <svg class="w-10 h-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+                <p class="text-sm font-medium text-gray-400">No products found</p>
+                <p class="text-xs text-gray-300">Try adjusting your filters or add a new product</p>
+            </div>
+        </td></tr>`;
         return;
     }
 
@@ -602,8 +619,10 @@ async function deleteSelected() {
             fetch(`/api/products/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
         ));
         await loadProducts();
+        showToast(`${ids.length} product(s) deleted.`, 'success');
     } catch (e) {
         showTableError(e.message);
+        showToast('Delete failed: ' + e.message, 'error');
     }
 }
 
@@ -687,8 +706,10 @@ async function submitProduct() {
         const res  = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.error) throw new Error(data.message);
+        const action = editingProductId ? 'updated' : 'created';
         closeModal();
         await loadProducts();
+        showToast(`Product ${action} successfully.`, 'success');
     } catch (e) {
         showModalError(e.message);
     }
@@ -858,6 +879,7 @@ async function submitMovement() {
         await loadProducts();
         allMovements = [];
         if (currentMainTab === 'movements') await loadMovements();
+        showToast(`Stock ${currentMovType === 'in' ? 'intake' : 'withdrawal'} recorded successfully.`, 'success');
     } catch (e) {
         showMovError(e.message);
     } finally {

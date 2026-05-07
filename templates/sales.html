@@ -310,7 +310,7 @@ async function deleteDealFromModal() {
         await loadSummary();
         renderPipeline();
     } else {
-        alert('Failed to delete');
+        showToast('Failed to delete deal.', 'error');
     }
 }
 
