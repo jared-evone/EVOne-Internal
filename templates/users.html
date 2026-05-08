@@ -79,7 +79,8 @@
                 <select id="inviteRole"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                     <option value="3">Read Only — Can view all data</option>
-                    <option value="2">Finance — Can manage billing</option>
+                    <option value="2">Finance — Billing page only</option>
+                    <option value="4">Technical — Document Signing &amp; Center</option>
                     <option value="1">Admin — Full access</option>
                 </select>
             </div>
@@ -99,8 +100,9 @@
 <script>
 const ROLES = {
     1: { label: 'Admin',     color: 'bg-indigo-100 text-indigo-700' },
-    2: { label: 'Finance',   color: 'bg-blue-100 text-blue-700' },
+    2: { label: 'Finance',   color: 'bg-green-100 text-green-700' },
     3: { label: 'Read Only', color: 'bg-gray-100 text-gray-600' },
+    4: { label: 'Technical', color: 'bg-orange-100 text-orange-700' },
 };
 
 let currentUserId = null;
@@ -169,7 +171,7 @@ function renderUsers(users) {
         const isSelf   = u.id === currentUserId;
         const initial  = (u.email.charAt(0) || '?').toUpperCase();
         const role     = ROLES[u.role_id] || ROLES[3];
-        const roleOpts = [1, 2, 3].map(id =>
+        const roleOpts = [1, 2, 3, 4].map(id =>
             `<option value="${id}" ${u.role_id === id ? 'selected' : ''}>${ROLES[id].label}</option>`
         ).join('');
 
@@ -218,19 +220,24 @@ async function updateRole(selectEl) {
     const headers  = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
 
     try {
-        const res = await fetch(`/api/users/${userId}/role`, {
+        const res  = await fetch(`/api/users/${userId}/role`, {
             method: 'PATCH', headers,
             body: JSON.stringify({ role_id: newRole }),
         });
-        if (!res.ok) throw new Error('Failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            selectEl.value = prevRole;
+            showToast('Update failed: ' + (data.detail || data.message || `HTTP ${res.status}`), 'error');
+            return;
+        }
 
         selectEl.dataset.prev = newRole;
         const role = ROLES[newRole] || ROLES[3];
         selectEl.className = `text-xs font-bold px-2.5 py-1 rounded-full border-0 outline-none cursor-pointer ${role.color}`;
         showToast(`Role updated to ${role.label}.`, 'success');
-    } catch {
+    } catch (err) {
         selectEl.value = prevRole;
-        showToast('Failed to update role — please try again.', 'error');
+        showToast('Network error — ' + err.message, 'error');
     }
 }
 

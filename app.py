@@ -66,14 +66,30 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail="Auth failed")
 
 
-def check_is_admin(user_payload: dict) -> bool:
-    """RBAC core: based on role_id (1=Admin, 2=Finance, 3=Read Only).
+# Role definitions — single source of truth for RBAC across backend + frontend.
+# role_id 1 = Admin     : full access everywhere
+# role_id 2 = Finance   : billing page only
+# role_id 3 = Read Only : read access to all pages (no destructive actions)
+# role_id 4 = Technical : Document Signing (full) + Document Center (read-only)
+ROLE_INFO: dict[int, dict] = {
+    1: {"name": "Admin",     "allowed_paths": ["*"]},
+    2: {"name": "Finance",   "allowed_paths": ["/"]},
+    3: {"name": "Read Only", "allowed_paths": ["*"]},
+    4: {"name": "Technical", "allowed_paths": ["/e-sign", "/documents"]},
+}
 
-    Currently only Admin (1) is allowed to upload. To also allow Finance,
-    change the return to `role_id in (1, 2)`.
-    """
-    role_id = get_user_role_id(user_payload.get("sub"))
-    return role_id == 1
+
+def _get_role_id(user_payload: dict) -> int:
+    return get_user_role_id(user_payload.get("sub")) or 3
+
+
+def check_is_admin(user_payload: dict) -> bool:
+    return _get_role_id(user_payload) == 1
+
+
+def check_can_sign(user_payload: dict) -> bool:
+    """Admin and Technical may perform destructive signing operations."""
+    return _get_role_id(user_payload) in (1, 4)
 
 
 # ==========================================
@@ -92,6 +108,11 @@ async def serve_billing(request: Request):
 @app.get("/e-sign")
 async def serve_signing(request: Request):
     return templates.TemplateResponse(request=request, name="signing.html")
+
+
+@app.get("/activity")
+async def serve_activity(request: Request):
+    return templates.TemplateResponse(request=request, name="activity.html")
 
 
 @app.get("/documents")
@@ -115,6 +136,13 @@ async def get_config():
         "supabase_url": config.SUPABASE_URL,
         "supabase_key": config.SUPABASE_ANON_KEY,
     }
+
+
+@app.get("/api/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    role_id = _get_role_id(user)
+    info = ROLE_INFO.get(role_id, ROLE_INFO[3])
+    return {"role_id": role_id, "role_name": info["name"], "allowed_paths": info["allowed_paths"]}
 
 
 # ==========================================
@@ -182,6 +210,26 @@ async def create_signature(data: dict, user: dict = Depends(get_current_user)):
 @app.get("/api/get-signing-submissions")
 async def get_submissions(user: dict = Depends(get_current_user)):
     return docuseal.list_submissions()
+
+
+@app.delete("/api/signing-submissions/{sub_id}")
+async def delete_signing_submission(sub_id: int, user: dict = Depends(get_current_user)):
+    if not check_can_sign(user):
+        raise HTTPException(status_code=403, detail="Admin or Technical role required")
+    ok, body = docuseal.delete_submission(sub_id)
+    if ok:
+        return {"success": True}
+    return {"error": True, "message": body.get("message", "DocuSeal rejected the request.")}
+
+
+@app.patch("/api/signing-submissions/{sub_id}/archive")
+async def archive_signing_submission(sub_id: int, user: dict = Depends(get_current_user)):
+    if not check_can_sign(user):
+        raise HTTPException(status_code=403, detail="Admin or Technical role required")
+    ok, body = docuseal.archive_submission(sub_id)
+    if ok:
+        return {"success": True}
+    return {"error": True, "message": body.get("message", "DocuSeal rejected the request.")}
 
 
 @app.get("/api/get-document-download/{sub_id}")
@@ -808,12 +856,21 @@ async def list_team_users(user: dict = Depends(get_current_user)):
 async def update_user_role(user_id: str, payload: UpdateRolePayload, user: dict = Depends(get_current_user)):
     if not check_is_admin(user):
         raise HTTPException(status_code=403, detail="Admins only")
-    if payload.role_id not in (1, 2, 3):
-        raise HTTPException(status_code=400, detail="role_id must be 1, 2, or 3")
+    if payload.role_id not in (1, 2, 3, 4):
+        raise HTTPException(status_code=400, detail="role_id must be 1, 2, 3, or 4")
     try:
-        supabase_admin.schema("evone_billing").table("users").upsert(
-            {"id": user_id, "role_id": payload.role_id}, on_conflict="id"
-        ).execute()
+        # Fetch email from auth to satisfy any BEFORE UPDATE trigger that
+        # reads auth.users.email and writes it back to evone_billing.users.email
+        auth_resp = supabase_admin.auth.admin.get_user_by_id(user_id)
+        email = auth_resp.user.email if (auth_resp and auth_resp.user) else None
+
+        update_data: dict = {"role_id": payload.role_id}
+        if email:
+            update_data["email"] = email
+
+        supabase_admin.schema("evone_billing").table("users").update(
+            update_data
+        ).eq("id", user_id).execute()
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

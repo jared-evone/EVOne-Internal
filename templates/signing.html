@@ -75,7 +75,20 @@
 
     <div id="tab-trace" class="hidden">
         <div class="flex justify-between items-end mb-4">
-            <h2 class="text-2xl font-bold text-gray-800">Submission Trace</h2>
+            <div class="flex gap-1 bg-gray-100 rounded-lg p-1">
+                <button onclick="setViewMode('active')" id="viewActive"
+                    class="px-4 py-1.5 rounded-md text-sm font-bold transition bg-white text-gray-800 shadow-sm">
+                    Active
+                </button>
+                <button onclick="setViewMode('archived')" id="viewArchived"
+                    class="px-4 py-1.5 rounded-md text-sm font-bold transition text-gray-500 hover:text-gray-700">
+                    Archived
+                </button>
+                <button onclick="setViewMode('all')" id="viewAll"
+                    class="px-4 py-1.5 rounded-md text-sm font-bold transition text-gray-500 hover:text-gray-700">
+                    All
+                </button>
+            </div>
             <button onclick="fetchSubmissionsFromAPI()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold transition">
                 Refresh Data
             </button>
@@ -85,14 +98,14 @@
             <div class="flex-1">
                 <input type="text" id="filter_search" oninput="applyFilters()" placeholder="Search Document Name..." class="w-full border border-gray-300 p-2 rounded-md focus:ring-indigo-500 text-sm">
             </div>
-            <div class="w-full md:w-48">
+            <div class="w-full md:w-40">
                 <select id="filter_category" onchange="applyFilters()" class="w-full border border-gray-300 p-2 rounded-md text-sm focus:ring-indigo-500">
                     <option value="All">All Categories</option>
                     <option value="Internal">Internal Only</option>
                     <option value="External">External Only</option>
                 </select>
             </div>
-            <div class="w-full md:w-48">
+            <div class="w-full md:w-36">
                 <select id="filter_form" onchange="applyFilters()" class="w-full border border-gray-300 p-2 rounded-md text-sm focus:ring-indigo-500">
                     <option value="All">All Forms</option>
                     <option value="Form A">Form A</option>
@@ -111,7 +124,7 @@
                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Signer Progress</th>
                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
+                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="submissionList" class="divide-y divide-gray-200 text-sm bg-white">
@@ -124,6 +137,22 @@
 
 <script>
 let globalSubmissions = [];
+let viewMode = 'active'; // 'active' | 'archived' | 'all'
+
+function setViewMode(mode) {
+    viewMode = mode;
+    ['active', 'archived', 'all'].forEach(m => {
+        const btn = document.getElementById('view' + m.charAt(0).toUpperCase() + m.slice(1));
+        if (m === mode) {
+            btn.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+            btn.classList.remove('text-gray-500', 'hover:text-gray-700');
+        } else {
+            btn.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+            btn.classList.add('text-gray-500', 'hover:text-gray-700');
+        }
+    });
+    applyFilters();
+}
 
 function switchTab(tab) {
     const createTab = document.getElementById('tab-create');
@@ -191,19 +220,30 @@ async function fetchSubmissionsFromAPI() {
     }
 }
 
+function getArchivedIds() {
+    try { return new Set(JSON.parse(localStorage.getItem('archivedSubmissions') || '[]')); } catch { return new Set(); }
+}
+
+function setArchivedIds(set) {
+    localStorage.setItem('archivedSubmissions', JSON.stringify([...set]));
+}
+
 function applyFilters() {
     const searchText = document.getElementById('filter_search').value.toLowerCase();
-    const catFilter = document.getElementById('filter_category').value;
+    const catFilter  = document.getElementById('filter_category').value;
     const formFilter = document.getElementById('filter_form').value;
+    const archived   = getArchivedIds();
 
     const filteredData = globalSubmissions.filter(item => {
-        const docName = item.name || '';
+        const docName   = item.name || '';
         const nameLower = docName.toLowerCase();
+        const isArchived = archived.has(String(item.id));
 
+        if (viewMode === 'active'   &&  isArchived) return false;
+        if (viewMode === 'archived' && !isArchived) return false;
         if (searchText && !nameLower.includes(searchText)) return false;
         if (catFilter !== 'All' && !docName.includes(`[${catFilter}]`)) return false;
         if (formFilter !== 'All' && !docName.includes(formFilter)) return false;
-
         return true;
     });
 
@@ -270,7 +310,13 @@ function renderTable(dataArray) {
                 <td class="px-6 py-4"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${overallStatusColor}">${(item.status || 'unknown').toUpperCase()}</span></td>
                 <td class="px-6 py-4 text-gray-500 text-xs">${item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}</td>
                 <td class="px-6 py-4 text-right whitespace-nowrap">
-                    <button onclick="downloadAndSync('${item.id}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs transition">Sync & View</button>
+                    <div class="flex items-center justify-end gap-3">
+                        <button onclick="downloadAndSync('${item.id}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs transition">Sync & View</button>
+                        <button onclick="toggleArchive('${item.id}', this)" class="text-gray-400 hover:text-gray-700 font-bold text-xs transition" title="Archive / Unarchive">
+                            ${getArchivedIds().has(String(item.id)) ? 'Unarchive' : 'Archive'}
+                        </button>
+                        <button onclick="deleteSubmission(${item.id}, this)" class="text-red-400 hover:text-red-700 font-bold text-xs transition">Delete</button>
+                    </div>
                 </td>
             </tr>`;
     });
@@ -363,6 +409,45 @@ document.getElementById('signForm').addEventListener('submit', async (e) => {
         } else { showToast('Submission failed: ' + result.message, 'error'); }
     } catch (err) { showToast('Network or server error during submission.', 'error'); }
 });
+
+function toggleArchive(subId, btnEl) {
+    const archived = getArchivedIds();
+    const id = String(subId);
+    if (archived.has(id)) {
+        archived.delete(id);
+        showToast('Submission unarchived.', 'info');
+    } else {
+        archived.add(id);
+        showToast('Submission archived.', 'success');
+    }
+    setArchivedIds(archived);
+    applyFilters();
+}
+
+async function deleteSubmission(subId, btnEl) {
+    if (!confirm('Permanently delete this submission from DocuSeal? This cannot be undone.')) return;
+    const headers = getAuthHeaders();
+    const orig = btnEl.textContent;
+    btnEl.disabled = true; btnEl.textContent = 'Deleting…';
+    try {
+        const res  = await fetch(`/api/signing-submissions/${subId}`, { method: 'DELETE', headers });
+        const data = await res.json();
+        if (res.ok && !data.error) {
+            globalSubmissions = globalSubmissions.filter(s => s.id != subId);
+            const archived = getArchivedIds();
+            archived.delete(String(subId));
+            setArchivedIds(archived);
+            applyFilters();
+            showToast('Submission deleted successfully.', 'success');
+        } else {
+            showToast('Delete failed: ' + (data.message || data.detail || 'Unknown error'), 'error');
+            btnEl.disabled = false; btnEl.textContent = orig;
+        }
+    } catch {
+        showToast('Network error — cannot connect to server.', 'error');
+        btnEl.disabled = false; btnEl.textContent = orig;
+    }
+}
 
 updateSignerOptions();
 </script>

@@ -82,9 +82,31 @@ def create_submission(template_id_int: int, document_name: str, submitters: list
     return res.json()
 
 
-def list_submissions() -> list | dict:
-    res = _request("GET", "/submissions", headers=_headers())
-    return res.json() if res.ok else []
+def list_submissions() -> list:
+    """Fetch all submissions across pages (DocuSeal paginates at 100/page max)."""
+    all_items: list = []
+    after: int | None = None
+
+    while True:
+        params: dict = {"limit": 100}
+        if after is not None:
+            params["after"] = after
+
+        res = _request("GET", "/submissions", params=params, headers=_headers())
+        if not res.ok:
+            break
+
+        body = res.json()
+        items = body.get("data", body) if isinstance(body, dict) else body
+        if isinstance(items, list):
+            all_items.extend(items)
+
+        pagination = body.get("pagination", {}) if isinstance(body, dict) else {}
+        after = pagination.get("next")
+        if not after:
+            break
+
+    return all_items
 
 
 def get_submission(sub_id: str) -> tuple[bool, dict]:
@@ -99,6 +121,35 @@ def fetch_url_bytes(url: str) -> bytes | None:
     """Download an arbitrary URL (used for the signed-PDF URL DocuSeal returns)."""
     res = requests.get(url, timeout=_TIMEOUT)
     return res.content if res.ok else None
+
+
+def delete_submission(sub_id: int) -> tuple[bool, dict]:
+    """Permanently delete a submission from DocuSeal."""
+    res = _request("DELETE", f"/submissions/{sub_id}", headers=_headers())
+    if res.ok:
+        return True, {}
+    try:
+        body = res.json()
+    except ValueError:
+        body = {}
+    return False, body
+
+
+def archive_submission(sub_id: int) -> tuple[bool, dict]:
+    """Archive (soft-delete) a submission in DocuSeal."""
+    res = _request(
+        "PUT",
+        f"/submissions/{sub_id}",
+        json={"archived": True},
+        headers=_headers(json=True),
+    )
+    if res.ok:
+        return True, {}
+    try:
+        body = res.json()
+    except ValueError:
+        body = {}
+    return False, body
 
 
 def resend_submitter(submitter_id: int) -> tuple[bool, dict]:

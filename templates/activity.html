@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Activity – EVOne OPS{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto bg-gray-50 no-scrollbar">
+<div class="container mx-auto p-6 max-w-5xl">
+
+    <div class="flex justify-between items-end mb-6 border-b border-gray-200 pb-4">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">Activity & Reminders</h2>
+            <p class="text-sm text-gray-400 mt-0.5">Pending actions and recent events across the system</p>
+        </div>
+        <button onclick="loadAll()" class="text-sm text-indigo-600 hover:text-indigo-800 font-bold transition">Refresh</button>
+    </div>
+
+    <!-- ── Reminders ─────────────────────────────────────────── -->
+    <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Reminders</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+
+        <!-- Unsigned Documents -->
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-amber-50">
+                <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                </svg>
+                <span class="text-sm font-bold text-amber-800">Unsigned Documents</span>
+                <span id="pendingSignCount" class="ml-auto text-xs font-bold bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full hidden"></span>
+            </div>
+            <div id="pendingSignList" class="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                <div class="py-8 flex justify-center">
+                    <svg class="w-5 h-5 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deals Closing Soon -->
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-red-50">
+                <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <span class="text-sm font-bold text-red-800">Deals Closing Soon</span>
+                <span id="closingDealsCount" class="ml-auto text-xs font-bold bg-red-200 text-red-800 px-2 py-0.5 rounded-full hidden"></span>
+            </div>
+            <div id="closingDealsList" class="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                <div class="py-8 flex justify-center">
+                    <svg class="w-5 h-5 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Recent Activity ───────────────────────────────────── -->
+    <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Recent Activity</h3>
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div id="activityFeed" class="divide-y divide-gray-50">
+            <div class="py-12 flex justify-center">
+                <svg class="w-5 h-5 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<script>
+const STAGE_COLORS = {
+    new: 'bg-gray-100 text-gray-600',
+    quoted: 'bg-blue-100 text-blue-700',
+    negotiating: 'bg-yellow-100 text-yellow-700',
+    won: 'bg-green-100 text-green-700',
+    lost: 'bg-red-100 text-red-700',
+};
+const ACTIVE_STAGES = new Set(['new', 'quoted', 'negotiating']);
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function daysFromNow(dateStr) {
+    if (!dateStr) return null;
+    const diff = new Date(dateStr) - new Date();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function fmtMoney(amount, currency) {
+    if (amount == null || amount === '') return '';
+    try {
+        return new Intl.NumberFormat('en-SG', { style: 'currency', currency: currency || 'SGD', maximumFractionDigits: 0 }).format(Number(amount));
+    } catch { return `SGD ${Number(amount).toFixed(0)}`; }
+}
+
+function relativeTime(iso) {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins  = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days  = Math.floor(diff / 86400000);
+    if (mins < 1)   return 'Just now';
+    if (mins < 60)  return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7)   return `${days}d ago`;
+    return new Date(iso).toLocaleDateString('en-SG', { day: 'numeric', month: 'short' });
+}
+
+function groupByDate(events) {
+    const groups = {};
+    events.forEach(e => {
+        const d = new Date(e.ts);
+        const today = new Date();
+        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+        let label;
+        if (d.toDateString() === today.toDateString())         label = 'Today';
+        else if (d.toDateString() === yesterday.toDateString()) label = 'Yesterday';
+        else label = d.toLocaleDateString('en-SG', { weekday: 'long', day: 'numeric', month: 'long' });
+        if (!groups[label]) groups[label] = [];
+        groups[label].push(e);
+    });
+    return groups;
+}
+
+async function loadAll() {
+    const token = localStorage.getItem('evone_token');
+    const headers = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
+
+    const [dealsRes, sigsRes, customersRes] = await Promise.allSettled([
+        fetch('/api/deals', { headers }),
+        fetch('/api/get-signing-submissions', { headers }),
+        fetch('/api/customers', { headers }),
+    ]);
+
+    let allDeals = [], allSigs = [], allCustomers = [];
+
+    if (dealsRes.status === 'fulfilled' && dealsRes.value.ok) {
+        const d = await dealsRes.value.json();
+        allDeals = d.deals || [];
+    }
+    if (sigsRes.status === 'fulfilled' && sigsRes.value.ok) {
+        const d = await sigsRes.value.json();
+        allSigs = Array.isArray(d) ? d : (d.data || []);
+    }
+    if (customersRes.status === 'fulfilled' && customersRes.value.ok) {
+        const d = await customersRes.value.json();
+        allCustomers = d.customers || [];
+    }
+
+    renderPendingSigns(allSigs);
+    renderClosingDeals(allDeals);
+    renderActivityFeed(allDeals, allSigs, allCustomers);
+}
+
+function renderPendingSigns(sigs) {
+    const el   = document.getElementById('pendingSignList');
+    const badge = document.getElementById('pendingSignCount');
+    const pending = sigs.filter(s => s.status !== 'completed' && s.status !== 'declined');
+
+    if (pending.length === 0) {
+        el.innerHTML = `<div class="py-8 text-center text-sm text-gray-400">All documents signed</div>`;
+        return;
+    }
+
+    badge.textContent = pending.length;
+    badge.classList.remove('hidden');
+
+    el.innerHTML = pending.map(s => {
+        const rawName = s.name || 'Unnamed';
+        let badge2 = '', cleanName = rawName;
+        if (rawName.includes('[Internal]')) {
+            badge2 = `<span class="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded">Int</span>`;
+            cleanName = rawName.replace('[Internal]', '').trim();
+        } else if (rawName.includes('[External]')) {
+            badge2 = `<span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded">Ext</span>`;
+            cleanName = rawName.replace('[External]', '').trim();
+        }
+        const submitters = s.submitters || [];
+        const signedCount = submitters.filter(sub => sub.status === 'completed').length;
+        const totalCount  = submitters.length;
+        const emails = submitters.filter(sub => sub.status !== 'completed').map(sub => sub.email).join(', ');
+
+        return `
+            <div class="px-5 py-3 hover:bg-amber-50 transition cursor-pointer" onclick="window.location='/e-sign'">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            ${badge2}
+                            <span class="text-sm font-medium text-gray-800 truncate">${escapeHtml(cleanName)}</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-0.5 truncate">${escapeHtml(emails) || 'No pending signers'}</p>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <span class="text-xs font-bold text-amber-700">${signedCount}/${totalCount} signed</span>
+                        <p class="text-[10px] text-gray-400 mt-0.5">${relativeTime(s.created_at)}</p>
+                    </div>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderClosingDeals(deals) {
+    const el    = document.getElementById('closingDealsList');
+    const badge = document.getElementById('closingDealsCount');
+
+    const active = deals.filter(d => ACTIVE_STAGES.has(d.stage) && d.expected_close_date);
+    const closing = active
+        .map(d => ({ ...d, daysLeft: daysFromNow(d.expected_close_date) }))
+        .filter(d => d.daysLeft <= 14)
+        .sort((a, b) => a.daysLeft - b.daysLeft);
+
+    if (closing.length === 0) {
+        el.innerHTML = `<div class="py-8 text-center text-sm text-gray-400">No deals closing within 14 days</div>`;
+        return;
+    }
+
+    badge.textContent = closing.length;
+    badge.classList.remove('hidden');
+
+    el.innerHTML = closing.map(d => {
+        const overdue = d.daysLeft < 0;
+        const urgent  = d.daysLeft <= 3 && d.daysLeft >= 0;
+        const dayLabel = overdue
+            ? `<span class="text-red-600 font-bold">${Math.abs(d.daysLeft)}d overdue</span>`
+            : d.daysLeft === 0
+                ? `<span class="text-red-600 font-bold">Due today</span>`
+                : `<span class="${urgent ? 'text-orange-600' : 'text-gray-500'} font-bold">${d.daysLeft}d left</span>`;
+        const stageColor = STAGE_COLORS[d.stage] || 'bg-gray-100 text-gray-600';
+
+        return `
+            <div class="px-5 py-3 hover:bg-red-50 transition cursor-pointer" onclick="window.location='/deals'">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(d.title)}</p>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${stageColor}">${d.stage}</span>
+                            <span class="text-xs text-gray-400">${d.expected_close_date}</span>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        ${dayLabel}
+                        <p class="text-xs text-gray-500 mt-0.5">${fmtMoney(d.amount, d.currency)}</p>
+                    </div>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function renderActivityFeed(deals, sigs, customers) {
+    const feed = document.getElementById('activityFeed');
+
+    const events = [];
+
+    deals.slice(0, 20).forEach(d => {
+        events.push({
+            ts: d.updated_at || d.created_at,
+            icon: `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>`,
+            iconBg: 'bg-blue-100 text-blue-600',
+            label: `Deal: <span class="font-bold text-gray-800">${escapeHtml(d.title)}</span>`,
+            meta: `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${STAGE_COLORS[d.stage] || 'bg-gray-100 text-gray-600'}">${d.stage}</span>`,
+            link: '/deals',
+        });
+    });
+
+    customers.slice(0, 10).forEach(c => {
+        events.push({
+            ts: c.created_at,
+            icon: `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>`,
+            iconBg: 'bg-indigo-100 text-indigo-600',
+            label: `Customer added: <span class="font-bold text-gray-800">${escapeHtml(c.name)}</span>`,
+            meta: c.status ? `<span class="text-[10px] text-gray-400">${c.status}</span>` : '',
+            link: '/customers',
+        });
+    });
+
+    sigs.slice(0, 10).forEach(s => {
+        const rawName = s.name || 'Unnamed';
+        const cleanName = rawName.replace('[Internal]', '').replace('[External]', '').trim();
+        const statusColor = s.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+        events.push({
+            ts: s.created_at,
+            icon: `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>`,
+            iconBg: 'bg-amber-100 text-amber-600',
+            label: `Signing: <span class="font-bold text-gray-800">${escapeHtml(cleanName)}</span>`,
+            meta: `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusColor}">${s.status || 'pending'}</span>`,
+            link: '/e-sign',
+        });
+    });
+
+    events.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+    if (events.length === 0) {
+        feed.innerHTML = `<div class="py-12 text-center text-sm text-gray-400">No recent activity</div>`;
+        return;
+    }
+
+    const groups = groupByDate(events);
+    feed.innerHTML = Object.entries(groups).map(([label, items]) => `
+        <div>
+            <div class="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">${label}</span>
+            </div>
+            ${items.map(e => `
+                <div onclick="window.location='${e.link}'" class="flex items-start gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition">
+                    <div class="w-7 h-7 rounded-full ${e.iconBg} flex items-center justify-center shrink-0 mt-0.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${e.icon}</svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-600">${e.label}</p>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            ${e.meta}
+                            <span class="text-[10px] text-gray-400">${relativeTime(e.ts)}</span>
+                        </div>
+                    </div>
+                </div>`).join('')}
+        </div>`).join('');
+}
+
+loadAll();
+</script>
+{% endblock %}

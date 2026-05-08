@@ -32,7 +32,7 @@
          style="min-width:260px;max-width:340px"></div>
 
     <div id="loginOverlay" class="fixed inset-0 z-50 flex justify-center items-center"
-         style="background:rgba(15,23,42,0.94)">
+         style="background:rgba(15,23,42,0.94);display:none">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-96">
             <div class="flex justify-center items-baseline gap-1.5 mb-1.5">
                 <span class="text-3xl font-black tracking-wider" style="color:#00ad5f">EVOne</span>
@@ -53,6 +53,7 @@
             </div>
         </div>
     </div>
+    <script>if (!localStorage.getItem('evone_token')) { document.getElementById('loginOverlay').style.display = 'flex'; }</script>
 
     <aside class="w-64 bg-sidebar text-white flex flex-col shadow-xl z-10">
         <div class="h-16 flex items-center px-6 border-b border-gray-800">
@@ -60,6 +61,9 @@
             <span class="ml-2 text-sm text-gray-400 font-semibold mt-1">OPS</span>
         </div>
         <nav class="flex-1 py-6 px-3 space-y-2">
+            <a href="/activity" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
+                <span class="font-medium">Activity</span>
+            </a>
             <a href="/" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
                 <span class="font-medium">Billing Settlement</span>
             </a>
@@ -90,6 +94,7 @@
                 <div class="w-10 h-10 rounded-full bg-evgreen flex items-center justify-center text-white font-bold" id="avatarIcon">U</div>
                 <div class="ml-3">
                     <p id="userNameDisplay" class="text-sm font-medium text-white truncate w-24">User</p>
+                    <p id="userRoleBadge" class="text-xs text-gray-400 truncate w-24"></p>
                 </div>
             </div>
             <button onclick="logout()" class="text-gray-400 hover:text-red-500 transition">Logout</button>
@@ -201,10 +206,56 @@
             });
         }
 
+        // ── Role-based permissions ────────────────────────────────────────────────
+        function _isPathAllowed(pathname, allowedPaths) {
+            if (allowedPaths.includes('*')) return true;
+            return allowedPaths.some(p =>
+                p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(p + '/')
+            );
+        }
+
+        async function applyRolePermissions() {
+            try {
+                const res = await fetch('/api/me', { headers: getAuthHeaders() });
+                if (!res.ok) return;
+                const { role_name, allowed_paths } = await res.json();
+
+                // Show role name in sidebar
+                document.getElementById('userRoleBadge').textContent = role_name;
+
+                // Hide nav links the role cannot access
+                if (!allowed_paths.includes('*')) {
+                    document.querySelectorAll('aside nav a').forEach(a => {
+                        const href = a.getAttribute('href') || '/';
+                        if (!_isPathAllowed(href, allowed_paths)) {
+                            a.style.display = 'none';
+                        }
+                    });
+                }
+
+                // Guard current page
+                const currentPath = window.location.pathname;
+                if (!_isPathAllowed(currentPath, allowed_paths)) {
+                    document.querySelector('main').innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-center p-8">
+                            <svg class="w-16 h-16 text-gray-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                            <h2 class="text-xl font-bold text-gray-400">Access Restricted</h2>
+                            <p class="text-sm text-gray-300 mt-2">Your role (<strong>${role_name}</strong>) does not have permission to view this page.</p>
+                        </div>`;
+                }
+            } catch (_) {}
+        }
+
         window.onload = async () => {
             await initSupabase();
             checkAuth();
             markActiveNav();
+            if (localStorage.getItem('evone_token')) {
+                await applyRolePermissions();
+            }
             if (typeof onPageLoad === 'function') onPageLoad();
         };
 
