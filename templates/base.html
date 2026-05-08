@@ -89,6 +89,27 @@
                 <span class="font-medium">Team Members</span>
             </a>
         </nav>
+        <script>
+        (function(){
+            try {
+                var cache = JSON.parse(localStorage.getItem('evone_role_cache') || 'null');
+                if (!cache) return;
+                if (cache.role_name) {
+                    var b = document.getElementById('userRoleBadge');
+                    if (b) b.textContent = cache.role_name;
+                }
+                if (Array.isArray(cache.allowed_paths) && !cache.allowed_paths.includes('*')) {
+                    document.querySelectorAll('aside nav a').forEach(function(a) {
+                        var href = a.getAttribute('href') || '/';
+                        var ok = cache.allowed_paths.some(function(p) {
+                            return p === '/' ? href === '/' : href === p || href.startsWith(p + '/');
+                        });
+                        if (!ok) a.style.display = 'none';
+                    });
+                }
+            } catch(e) {}
+        })();
+        </script>
         <div class="p-4 border-t border-gray-800 flex items-center justify-between bg-gray-900">
             <div class="flex items-center">
                 <div class="w-10 h-10 rounded-full bg-evgreen flex items-center justify-center text-white font-bold" id="avatarIcon">U</div>
@@ -219,6 +240,9 @@
                 const res = await fetch('/api/me', { headers: getAuthHeaders() });
                 if (!res.ok) return;
                 const { role_name, allowed_paths } = await res.json();
+
+                // Persist for instant nav hide on next page load
+                localStorage.setItem('evone_role_cache', JSON.stringify({ role_name, allowed_paths }));
 
                 // Show role name in sidebar
                 document.getElementById('userRoleBadge').textContent = role_name;
