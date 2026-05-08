@@ -35,6 +35,7 @@ SUPABASE_JWT_SECRET = _require("SUPABASE_JWT_SECRET")
 # DocuSeal
 DOCUSEAL_API_KEY = _require("DOCUSEAL_API_KEY")
 DOCUSEAL_BASE_URL = _optional("DOCUSEAL_BASE_URL", "https://api.docuseal.com")
+DOCUSEAL_APP_URL  = _optional("DOCUSEAL_APP_URL",  "https://docuseal.com")
 
 # DocuSeal template IDs — read lazily via os.environ at call time so missing
 # template IDs only fail the specific form-type they apply to, not app startup.

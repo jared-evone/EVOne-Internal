@@ -88,7 +88,7 @@ def list_submissions() -> list:
     after: int | None = None
 
     while True:
-        params: dict = {"limit": 100}
+        params: dict = {"limit": 100, "archived": "false"}
         if after is not None:
             params["after"] = after
 
@@ -150,6 +150,17 @@ def archive_submission(sub_id: int) -> tuple[bool, dict]:
     except ValueError:
         body = {}
     return False, body
+
+
+def get_submitter(submitter_id: int) -> tuple[bool, dict]:
+    """Fetch a single submitter — includes embed_src for in-person signing."""
+    res = _request("GET", f"/submitters/{submitter_id}", headers=_headers())
+    if not res.ok:
+        return False, {}
+    try:
+        return True, res.json()
+    except ValueError:
+        return False, {}
 
 
 def resend_submitter(submitter_id: int) -> tuple[bool, dict]:

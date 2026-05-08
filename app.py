@@ -271,6 +271,21 @@ async def get_download(sub_id: str, user: dict = Depends(get_current_user)):
         return {"error": True, "message": str(e)}
 
 
+@app.get("/api/submitters/{submitter_id}/embed")
+async def get_submitter_embed(submitter_id: int, user: dict = Depends(get_current_user)):
+    if not check_can_sign(user):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    ok, data = docuseal.get_submitter(submitter_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Submitter not found")
+    embed_src = data.get("embed_src")
+    if not embed_src:
+        slug = data.get("slug")
+        if slug:
+            embed_src = f"{config.DOCUSEAL_APP_URL.rstrip('/')}/s/{slug}"
+    return {"embed_src": embed_src}
+
+
 @app.post("/api/resend-signature/{submitter_id}")
 async def resend_signature(submitter_id: int, user: dict = Depends(get_current_user)):
     try:

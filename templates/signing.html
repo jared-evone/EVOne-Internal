@@ -1,6 +1,49 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- Sign in Person Modal -->
+<div id="signInPersonModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex justify-between items-start mb-5">
+            <div>
+                <h3 class="text-lg font-bold text-gray-800">Sign in Person</h3>
+                <p id="signInPersonLabel" class="text-xs text-gray-400 mt-0.5"></p>
+            </div>
+            <button onclick="closeSignInPersonModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none ml-4">&times;</button>
+        </div>
+
+        <div id="signInPersonLoading" class="hidden flex flex-col items-center py-8 gap-3 text-gray-400">
+            <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span class="text-sm">Loading signing link…</span>
+        </div>
+
+        <div id="signInPersonReady" class="hidden">
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-5 flex gap-3">
+                <svg class="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                </svg>
+                <div>
+                    <p class="text-sm font-bold text-indigo-800">Signing form opened in a new tab</p>
+                    <p class="text-xs text-indigo-600 mt-0.5">Hand the device to the signer and ask them to complete the form in the new tab.</p>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="signInPersonReopenBtn"
+                    class="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition">
+                    Open Again
+                </button>
+                <button onclick="closeSignInPersonModal()"
+                    class="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
+                    Done &amp; Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="container mx-auto p-6 max-w-6xl">
     
     <div class="flex space-x-4 mb-8 border-b border-gray-200">
@@ -120,11 +163,10 @@
                 <thead class="bg-gray-50 sticky top-0 z-10 shadow-sm">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Document</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Recipients</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Signer Progress</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Signers</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="submissionList" class="divide-y divide-gray-200 text-sm bg-white">
@@ -138,6 +180,7 @@
 <script>
 let globalSubmissions = [];
 let viewMode = 'active'; // 'active' | 'archived' | 'all'
+let submitterEmbedMap = {}; // submitterId -> { embedSrc, label }
 
 function setViewMode(mode) {
     viewMode = mode;
@@ -223,10 +266,10 @@ async function fetchSubmissionsFromAPI() {
 function getArchivedIds() {
     try { return new Set(JSON.parse(localStorage.getItem('archivedSubmissions') || '[]')); } catch { return new Set(); }
 }
-
 function setArchivedIds(set) {
     localStorage.setItem('archivedSubmissions', JSON.stringify([...set]));
 }
+
 
 function applyFilters() {
     const searchText = document.getElementById('filter_search').value.toLowerCase();
@@ -267,26 +310,47 @@ function renderTable(dataArray) {
         const emails = submitters.map(s => s.email).join('<br>');
         const partyNames = ["First Party", "Second Party", "Third Party"];
         
-        const progressHTML = submitters.map((s, index) => {
-            let dotColor = "text-gray-400"; 
-            if (s.status === 'completed') dotColor = "text-green-500";
-            if (s.status === 'viewed') dotColor = "text-blue-500";
-            if (s.status === 'declined') dotColor = "text-red-500";
-            
+        const statusStyle = {
+            completed: { dot: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
+            viewed:    { dot: 'bg-blue-500',  badge: 'bg-blue-100 text-blue-700' },
+            declined:  { dot: 'bg-red-500',   badge: 'bg-red-100 text-red-700' },
+            pending:   { dot: 'bg-gray-300',  badge: 'bg-gray-100 text-gray-500' },
+        };
+
+        const signersHTML = submitters.map((s, index) => {
             const displayName = partyNames[index] || s.role;
-            
-            // Re-send 按钮注入逻辑
-            let resendBtn = '';
-            if (s.status !== 'completed' && s.status !== 'declined') {
-                resendBtn = `<button onclick="resendEmail(${s.id}, this)" class="ml-2 px-1.5 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-[9px] font-bold transition whitespace-nowrap border border-gray-200">Re-send</button>`;
-            }
-            
-            return `<div class="flex items-center text-[11px] mb-1">
-                        <span class="${dotColor} text-lg leading-none mr-1">●</span>
-                        <span class="text-gray-700 font-bold mr-1">${displayName}:</span>
-                        <span class="text-gray-500">${s.status || 'pending'}</span>
-                        ${resendBtn}
-                    </div>`;
+            const st = s.status || 'pending';
+            const style = statusStyle[st] || statusStyle.pending;
+            const isPending = st !== 'completed' && st !== 'declined';
+
+            const resendBtn = isPending
+                ? `<button onclick="resendEmail(${s.id}, this)"
+                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition whitespace-nowrap">
+                        Re-send
+                   </button>`
+                : '';
+
+            const signBtn = isPending
+                ? `<button onclick="openSignInPerson(${s.id}, '${displayName}', '${s.email}')"
+                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition whitespace-nowrap">
+                        Sign
+                   </button>`
+                : '';
+
+            return `
+                <div class="flex items-center justify-between gap-3 px-2.5 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-2 h-2 rounded-full shrink-0 ${style.dot}"></span>
+                        <div class="min-w-0">
+                            <p class="text-xs font-bold text-gray-700 leading-tight">${displayName}</p>
+                            <p class="text-[10px] text-gray-400 truncate max-w-[140px]">${s.email || '—'}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${style.badge}">${st}</span>
+                        ${resendBtn}${signBtn}
+                    </div>
+                </div>`;
         }).join('');
 
         const overallStatusColor = item.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
@@ -303,16 +367,21 @@ function renderTable(dataArray) {
         }
 
         tbody.innerHTML += `
-            <tr class="hover:bg-gray-50 transition">
-                <td class="px-6 py-4 font-medium text-gray-900"><div class="flex items-center">${badgeHTML} ${cleanName}</div></td>
-                <td class="px-6 py-4 text-[11px] text-gray-500 leading-relaxed">${emails || '-'}</td>
-                <td class="px-6 py-4">${progressHTML || '-'}</td>
-                <td class="px-6 py-4"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${overallStatusColor}">${(item.status || 'unknown').toUpperCase()}</span></td>
-                <td class="px-6 py-4 text-gray-500 text-xs">${item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}</td>
-                <td class="px-6 py-4 text-right whitespace-nowrap">
-                    <div class="flex items-center justify-end gap-3">
+            <tr class="hover:bg-gray-50 transition align-top">
+                <td class="px-6 py-4 font-medium text-gray-900 max-w-[180px]">
+                    <div class="flex items-center gap-1.5 flex-wrap">${badgeHTML}<span class="leading-snug">${cleanName}</span></div>
+                </td>
+                <td class="px-4 py-4">
+                    <div class="space-y-1.5 min-w-[260px]">${signersHTML || '—'}</div>
+                </td>
+                <td class="px-4 py-4">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${overallStatusColor}">${(item.status || 'unknown').toUpperCase()}</span>
+                </td>
+                <td class="px-4 py-4 text-gray-500 text-xs whitespace-nowrap">${item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}</td>
+                <td class="px-4 py-4 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-2">
                         <button onclick="downloadAndSync('${item.id}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs transition">Sync & View</button>
-                        <button onclick="toggleArchive('${item.id}', this)" class="text-gray-400 hover:text-gray-700 font-bold text-xs transition" title="Archive / Unarchive">
+                        <button onclick="toggleArchive('${item.id}', this)" class="text-gray-400 hover:text-gray-700 font-bold text-xs transition">
                             ${getArchivedIds().has(String(item.id)) ? 'Unarchive' : 'Archive'}
                         </button>
                         <button onclick="deleteSubmission(${item.id}, this)" class="text-red-400 hover:text-red-700 font-bold text-xs transition">Delete</button>
@@ -447,6 +516,39 @@ async function deleteSubmission(subId, btnEl) {
         showToast('Network error — cannot connect to server.', 'error');
         btnEl.disabled = false; btnEl.textContent = orig;
     }
+}
+
+async function openSignInPerson(submitterId, displayName, email) {
+    const label = `${displayName} — ${email}`;
+    document.getElementById('signInPersonLabel').textContent = label;
+    document.getElementById('signInPersonLoading').classList.remove('hidden');
+    document.getElementById('signInPersonReady').classList.add('hidden');
+    document.getElementById('signInPersonModal').classList.remove('hidden');
+
+    try {
+        const res  = await fetch(`/api/submitters/${submitterId}/embed`, { headers: getAuthHeaders() });
+        const data = await res.json();
+        const src  = data.embed_src;
+        if (!src) {
+            showToast('Signing link not available for this submitter.', 'error');
+            closeSignInPersonModal();
+            return;
+        }
+        window.open(src, '_blank');
+        document.getElementById('signInPersonLoading').classList.add('hidden');
+        document.getElementById('signInPersonReady').classList.remove('hidden');
+        document.getElementById('signInPersonReopenBtn').onclick = () => window.open(src, '_blank');
+    } catch {
+        showToast('Failed to load signing link.', 'error');
+        closeSignInPersonModal();
+    }
+}
+
+function closeSignInPersonModal() {
+    document.getElementById('signInPersonModal').classList.add('hidden');
+    document.getElementById('signInPersonLoading').classList.add('hidden');
+    document.getElementById('signInPersonReady').classList.add('hidden');
+    fetchSubmissionsFromAPI();
 }
 
 updateSignerOptions();
