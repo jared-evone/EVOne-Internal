@@ -818,6 +818,7 @@ class UpdateRolePayload(BaseModel):
 
 class InviteUserPayload(BaseModel):
     email: str
+    password: str
     role_id: int = 3
 
 
@@ -880,12 +881,19 @@ async def update_user_role(user_id: str, payload: UpdateRolePayload, user: dict 
 async def invite_team_user(payload: InviteUserPayload, user: dict = Depends(get_current_user)):
     if not check_is_admin(user):
         raise HTTPException(status_code=403, detail="Admins only")
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     try:
-        res = supabase_admin.auth.admin.invite_user_by_email(payload.email)
+        res = supabase_admin.auth.admin.create_user({
+            "email": payload.email,
+            "password": payload.password,
+            "email_confirm": True,
+        })
         new_user = res.user if hasattr(res, "user") else res
         if new_user and new_user.id:
             supabase_admin.schema("evone_billing").table("users").upsert(
-                {"id": new_user.id, "role_id": payload.role_id}, on_conflict="id"
+                {"id": new_user.id, "email": payload.email, "role_id": payload.role_id},
+                on_conflict="id",
             ).execute()
         return {"success": True}
     except Exception as e:

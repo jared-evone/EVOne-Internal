@@ -65,13 +65,18 @@
 <div id="inviteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
     <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
         <div class="flex justify-between items-center mb-5">
-            <h3 class="text-lg font-bold text-gray-800">Invite New Member</h3>
+            <h3 class="text-lg font-bold text-gray-800">Add New Member</h3>
             <button onclick="closeInviteModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
         <form id="inviteForm" class="space-y-4">
             <div>
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Email Address *</label>
                 <input type="email" id="inviteEmail" required placeholder="colleague@evone.com.sg"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Password *</label>
+                <input type="password" id="invitePassword" required placeholder="Min. 6 characters"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
             </div>
             <div>
@@ -90,7 +95,7 @@
                     class="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition">Cancel</button>
                 <button type="submit" id="inviteSubmitBtn"
                     class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition shadow-md">
-                    Send Invite
+                    Create User
                 </button>
             </div>
         </form>
@@ -258,8 +263,9 @@ async function removeUser(userId, email) {
 }
 
 function openInviteModal() {
-    document.getElementById('inviteEmail').value = '';
-    document.getElementById('inviteRole').value  = '3';
+    document.getElementById('inviteEmail').value    = '';
+    document.getElementById('invitePassword').value = '';
+    document.getElementById('inviteRole').value     = '3';
     document.getElementById('inviteError').classList.add('hidden');
     document.getElementById('inviteModal').classList.remove('hidden');
     setTimeout(() => document.getElementById('inviteEmail').focus(), 50);
@@ -271,13 +277,20 @@ function closeInviteModal() {
 
 document.getElementById('inviteForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email  = document.getElementById('inviteEmail').value.trim();
-    const roleId = parseInt(document.getElementById('inviteRole').value);
-    const btn    = document.getElementById('inviteSubmitBtn');
-    const errEl  = document.getElementById('inviteError');
+    const email    = document.getElementById('inviteEmail').value.trim();
+    const password = document.getElementById('invitePassword').value;
+    const roleId   = parseInt(document.getElementById('inviteRole').value);
+    const btn      = document.getElementById('inviteSubmitBtn');
+    const errEl    = document.getElementById('inviteError');
+
+    if (password.length < 6) {
+        errEl.textContent = 'Password must be at least 6 characters.';
+        errEl.classList.remove('hidden');
+        return;
+    }
 
     errEl.classList.add('hidden');
-    btn.disabled = true; btn.textContent = 'Sending…';
+    btn.disabled = true; btn.textContent = 'Creating…';
 
     const token   = localStorage.getItem('evone_token');
     const headers = { 'Authorization': 'Bearer ' + (token || ''), 'Content-Type': 'application/json' };
@@ -285,22 +298,22 @@ document.getElementById('inviteForm').addEventListener('submit', async (e) => {
     try {
         const res  = await fetch('/api/users/invite', {
             method: 'POST', headers,
-            body: JSON.stringify({ email, role_id: roleId }),
+            body: JSON.stringify({ email, password, role_id: roleId }),
         });
         const data = await res.json();
         if (!res.ok) {
-            errEl.textContent = data.detail || 'Invite failed — please try again.';
+            errEl.textContent = data.detail || 'Failed to create user — please try again.';
             errEl.classList.remove('hidden');
         } else {
             closeInviteModal();
-            showToast(`Invite sent to ${email}.`, 'success');
+            showToast(`User ${email} created successfully.`, 'success');
             loadUsers();
         }
     } catch {
         errEl.textContent = 'Network error — please check your connection.';
         errEl.classList.remove('hidden');
     } finally {
-        btn.disabled = false; btn.textContent = 'Send Invite';
+        btn.disabled = false; btn.textContent = 'Create User';
     }
 });
 
