@@ -1,6 +1,7 @@
 import io
 import gc
 import os
+import hashlib
 import zipfile
 import warnings
 import pandas as pd
@@ -891,8 +892,9 @@ async def invite_team_user(payload: InviteUserPayload, user: dict = Depends(get_
         })
         new_user = res.user if hasattr(res, "user") else res
         if new_user and new_user.id:
+            hashed_pw = hashlib.sha256(payload.password.encode()).hexdigest()
             supabase_admin.schema("evone_billing").table("users").upsert(
-                {"id": new_user.id, "email": payload.email, "role_id": payload.role_id},
+                {"id": new_user.id, "email": payload.email, "role_id": payload.role_id, "hashed_password": hashed_pw},
                 on_conflict="id",
             ).execute()
         return {"success": True}
