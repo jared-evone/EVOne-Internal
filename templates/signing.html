@@ -72,6 +72,7 @@
                         <option value="Form A">Form A</option>
                         <option value="Form D">Form D</option>
                         <option value="Form 1">Form 1</option>
+                        <option value="Meter Reading and Maintenance Form">Meter Reading and Maintenance Form</option>
                     </select>
                 </div>
                 <div>
@@ -154,6 +155,7 @@
                     <option value="Form A">Form A</option>
                     <option value="Form D">Form D</option>
                     <option value="Form 1">Form 1</option>
+                    <option value="Meter Reading">Meter Reading</option>
                 </select>
             </div>
         </div>
@@ -225,6 +227,8 @@ function updateSignerOptions() {
     if (formType === 'Form A') {
         countSelect.add(new Option('1 Person (First Party)', '1'));
         countSelect.add(new Option('2 People (First + Second Party)', '2'));
+    } else if (formType === 'Meter Reading and Maintenance Form') {
+        countSelect.add(new Option('2 People (Technician + Supervisor)', '2'));
     } else {
         countSelect.add(new Option('2 People (First + Second Party)', '2'));
         countSelect.add(new Option('3 People (First + Second + Third Party)', '3'));

@@ -63,6 +63,12 @@ def resolve_template_and_submitters(form_type: str, signers_count: str, data: di
                 {"role": "ES", "email": data.get("email_es"), "name": data.get("name_es")},
                 {"role": "LEW", "email": data.get("email_lew"), "name": data.get("name_lew")},
             ]
+    elif form_type == "Meter Reading and Maintenance Form":
+        tid = template_id("METER_2P")
+        submitters = [
+            {"role": "Technician", "email": data.get("email_es"), "name": data.get("name_es")},
+            {"role": "Supervisor", "email": data.get("email_lew"), "name": data.get("name_lew")},
+        ]
 
     return tid, submitters
 

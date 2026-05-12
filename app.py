@@ -23,7 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from pydantic import BaseModel
 
 import config
-from services import agents as agents_svc, deals, docuseal, inventory, sales
+from services import agents as agents_svc, deals, docuseal, inventory, sales, suppliers as suppliers_svc
 from services.supabase_client import (
     get_user_role_id,
     invalidate_role_cache,
@@ -257,6 +257,8 @@ async def get_download(sub_id: str, user: dict = Depends(get_current_user)):
                     form_folder = "Form D"
                 elif "Form 1" in raw_name:
                     form_folder = "Form 1"
+                elif "Meter Reading" in raw_name:
+                    form_folder = "Meter Reading"
 
                 cat_folder = "Internal" if "[Internal]" in raw_name else "External"
 
@@ -661,6 +663,11 @@ async def serve_inventory(request: Request):
     return templates.TemplateResponse(request=request, name="inventory.html")
 
 
+@app.get("/suppliers")
+async def serve_suppliers(request: Request):
+    return templates.TemplateResponse(request=request, name="suppliers.html")
+
+
 @app.get("/api/products")
 async def get_products(user: dict = Depends(get_current_user)):
     try:
@@ -968,7 +975,89 @@ async def get_agent_deals(agent_id: str, _user: dict = Depends(get_current_user)
 
 
 # ==========================================
-# 10. User Management (Admin Only)
+# 10. Suppliers
+# ==========================================
+
+class SupplierCreate(BaseModel):
+    name: str
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
+class SupplierUpdate(BaseModel):
+    name: str | None = None
+    contact_person: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    notes: str | None = None
+
+
+@app.get("/api/suppliers")
+async def list_suppliers_api(_user: dict = Depends(get_current_user)):
+    try:
+        return {"suppliers": suppliers_svc.list_suppliers()}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/suppliers")
+async def create_supplier_api(data: SupplierCreate, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        supplier = suppliers_svc.create_supplier(data.model_dump(exclude_none=True))
+        return {"supplier": supplier}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/suppliers/{supplier_id}")
+async def update_supplier_api(supplier_id: str, data: SupplierUpdate, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        payload = data.model_dump(exclude_none=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        supplier = suppliers_svc.update_supplier(supplier_id, payload)
+        return {"supplier": supplier}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/suppliers/{supplier_id}")
+async def delete_supplier_api(supplier_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return suppliers_svc.delete_supplier(supplier_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/suppliers/{supplier_id}/products")
+async def get_supplier_products(supplier_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        supplier = suppliers_svc.get_supplier(supplier_id)
+        if not supplier:
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        products = inventory.list_products()
+        linked = [p for p in products if (p.get("supplier") or "").strip().lower() == supplier["name"].strip().lower()]
+        return {"products": linked}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 11. User Management (Admin Only)
 # ==========================================
 
 class UpdateRolePayload(BaseModel):
