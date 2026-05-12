@@ -61,6 +61,11 @@
                     oninput="applyFilters()">
             </div>
 
+            <select id="agentFilter" onchange="applyFilters()"
+                class="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-evgreen outline-none bg-white">
+                <option value="">All Agents</option>
+            </select>
+
             <div class="flex-1"></div>
 
             <button onclick="exportDeals()"
@@ -98,11 +103,12 @@
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Value</th>
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Stage</th>
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Expected Close</th>
+                        <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Agent</th>
                         <th class="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Created</th>
                     </tr>
                 </thead>
                 <tbody id="dealTableBody">
-                    <tr><td colspan="8" class="py-16 text-center">
+                    <tr><td colspan="9" class="py-16 text-center">
                         <div class="inline-flex flex-col items-center gap-3 text-gray-400">
                             <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
@@ -118,6 +124,8 @@
         <div id="tableError" class="hidden px-6 py-3 bg-red-50 text-red-700 text-sm border-t shrink-0"></div>
     </div>
 </div>
+
+<datalist id="productList"></datalist>
 
 <!-- New / Edit Deal Modal -->
 <div id="modal" class="hidden fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
@@ -197,6 +205,27 @@
                 </div>
             </div>
 
+            <!-- Sales Agent -->
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Sales Agent</label>
+                <select id="f_owner_id" class="w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-evgreen outline-none text-sm bg-white">
+                    <option value="">— Unassigned —</option>
+                </select>
+            </div>
+
+            <!-- Line Items -->
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider">Line Items</label>
+                    <button type="button" onclick="addLineItem()"
+                        class="text-xs font-semibold hover:underline" style="color:#00ad5f">+ Add Product</button>
+                </div>
+                <div id="lineItemsContainer">
+                    <p class="text-xs text-gray-400 italic">No items — enter deal value manually above.</p>
+                </div>
+                <div id="lineItemsTotal" class="hidden text-right text-sm font-bold text-gray-900 mt-2 pt-2 border-t"></div>
+            </div>
+
             <!-- Notes -->
             <div>
                 <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Notes</label>
@@ -231,8 +260,12 @@ const STAGE_STYLE = {
 
 let allDeals        = [];
 let allCustomers    = [];
+let allAgents       = [];
+let allProducts     = [];
+let agentMap        = {};
 let activeStage     = 'All';
 let editingDealId   = null;
+let lineItems       = [];
 
 // ---- Helpers ----
 
@@ -267,9 +300,11 @@ async function onPageLoad() {
     });
     buildStagePills();
 
-    const [dealsRes, customersRes] = await Promise.all([
+    const [dealsRes, customersRes, agentsRes, productsRes] = await Promise.all([
         fetch('/api/deals',     { headers: getAuthHeaders() }),
         fetch('/api/customers', { headers: getAuthHeaders() }),
+        fetch('/api/agents',    { headers: getAuthHeaders() }),
+        fetch('/api/products',  { headers: getAuthHeaders() }),
     ]);
 
     try {
@@ -287,6 +322,31 @@ async function onPageLoad() {
                 document.getElementById('customerList').innerHTML =
                     allCustomers.map(c => `<option value="${esc(c.name)}">`).join('');
             }
+        }
+    } catch (_) {}
+
+    try {
+        let ad = _cache.get('agents');
+        if (!ad && agentsRes.ok) { ad = await agentsRes.json(); if (!ad.error) _cache.set('agents', ad); }
+        if (ad && !ad.error) {
+            allAgents = ad.agents || [];
+            agentMap  = Object.fromEntries(allAgents.map(a => [a.id, a.name]));
+            const agentOpts = '<option value="">— Unassigned —</option>' +
+                allAgents.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+            document.getElementById('f_owner_id').innerHTML = agentOpts;
+            document.getElementById('agentFilter').innerHTML =
+                '<option value="">All Agents</option>' +
+                allAgents.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+        }
+    } catch (_) {}
+
+    try {
+        let pd = _cache.get('products');
+        if (!pd && productsRes.ok) { pd = await productsRes.json(); if (!pd.error) _cache.set('products', pd, 600000); }
+        if (pd && !pd.error) {
+            allProducts = pd.products || [];
+            document.getElementById('productList').innerHTML =
+                allProducts.map(p => `<option value="${esc(p.name)}" data-id="${esc(p.id)}" data-price="${p.price}">`).join('');
         }
     } catch (_) {}
 
@@ -354,11 +414,13 @@ function renderStats(dealList) {
 // ---- Table ----
 
 function applyFilters() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
+    const search      = document.getElementById('searchInput').value.toLowerCase();
+    const agentFilter = document.getElementById('agentFilter').value;
     const filtered = allDeals.filter(d => {
         if (activeStage !== 'All' && d.stage !== activeStage) return false;
+        if (agentFilter && d.owner_id !== agentFilter) return false;
         if (search) {
-            const hay = `${d.title} ${d.customer_name || ''} ${d.type || ''}`.toLowerCase();
+            const hay = `${d.title} ${d.customer_name || ''} ${d.type || ''} ${agentMap[d.owner_id] || ''}`.toLowerCase();
             if (!hay.includes(search)) return false;
         }
         return true;
@@ -369,7 +431,7 @@ function applyFilters() {
 function renderTable(dealList) {
     const tbody = document.getElementById('dealTableBody');
     if (!dealList.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="py-16 text-center">
+        tbody.innerHTML = `<tr><td colspan="9" class="py-16 text-center">
             <div class="inline-flex flex-col items-center gap-2">
                 <svg class="w-10 h-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -382,7 +444,8 @@ function renderTable(dealList) {
         return;
     }
     tbody.innerHTML = dealList.map(d => {
-        const stageCls = STAGE_STYLE[d.stage] || 'bg-gray-100 text-gray-500';
+        const stageCls  = STAGE_STYLE[d.stage] || 'bg-gray-100 text-gray-500';
+        const agentName = agentMap[d.owner_id] || '—';
         return `
         <tr class="border-b hover:bg-gray-50 transition cursor-pointer"
             onclick="handleRowClick('${esc(d.id)}')">
@@ -397,6 +460,7 @@ function renderTable(dealList) {
                 <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${stageCls}">${esc(d.stage)}</span>
             </td>
             <td class="px-4 py-4 text-gray-500">${fmtDate(d.expected_close)}</td>
+            <td class="px-4 py-4 text-gray-500">${esc(agentName)}</td>
             <td class="px-4 py-4 text-gray-400">${fmtDate(d.created_at)}</td>
         </tr>`;
     }).join('');
@@ -482,12 +546,17 @@ function resetForm() {
     document.getElementById('f_customer_id').value   = '';
     document.getElementById('f_type').value          = '';
     document.getElementById('f_value').value         = '0';
+    document.getElementById('f_value').readOnly      = false;
+    document.getElementById('f_value').classList.remove('bg-gray-50', 'text-gray-400');
     document.getElementById('f_stage').value         = 'Lead';
     document.getElementById('f_expected_close').value = '';
     document.getElementById('f_closed_at').value     = '';
     document.getElementById('f_notes').value         = '';
+    document.getElementById('f_owner_id').value      = '';
     document.getElementById('modalError').classList.add('hidden');
     document.getElementById('closedAtRow').classList.add('hidden');
+    lineItems = [];
+    renderLineItems();
 }
 
 function openModal() {
@@ -498,7 +567,7 @@ function openModal() {
     document.getElementById('modal').classList.remove('hidden');
 }
 
-function openEditModal(d) {
+async function openEditModal(d) {
     editingDealId = d.id;
     document.getElementById('modalTitle').textContent     = 'Edit Deal';
     document.getElementById('modalSubmitBtn').textContent = 'Save Changes';
@@ -513,9 +582,24 @@ function openEditModal(d) {
     document.getElementById('f_expected_close').value = d.expected_close || '';
     document.getElementById('f_closed_at').value      = d.closed_at      || '';
     document.getElementById('f_notes').value          = d.notes          || '';
+    document.getElementById('f_owner_id').value       = d.owner_id       || '';
     toggleClosedAt();
 
     document.getElementById('modal').classList.remove('hidden');
+
+    try {
+        const r = await fetch(`/api/deals/${d.id}/items`, { headers: getAuthHeaders() });
+        if (r.ok) {
+            const data = await r.json();
+            lineItems = (data.items || []).map(i => ({
+                product_id:   i.product_id || null,
+                product_name: i.product_name || '',
+                qty:          parseInt(i.qty) || 1,
+                unit_price:   parseFloat(i.unit_price) || 0,
+            }));
+            if (lineItems.length) renderLineItems();
+        }
+    } catch (_) {}
 }
 
 function closeModal() {
@@ -536,6 +620,7 @@ async function submitDeal() {
         expected_close: document.getElementById('f_expected_close').value         || null,
         closed_at:      document.getElementById('f_closed_at').value              || null,
         notes:          document.getElementById('f_notes').value.trim()           || null,
+        owner_id:       document.getElementById('f_owner_id').value               || null,
     };
 
     const url    = editingDealId ? `/api/deals/${editingDealId}` : '/api/deals';
@@ -545,6 +630,16 @@ async function submitDeal() {
         const res  = await fetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(payload) });
         const data = await res.json();
         if (data.error) throw new Error(data.message);
+
+        const dealId = editingDealId || data.deal?.id;
+        if (dealId) {
+            await fetch(`/api/deals/${dealId}/items`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ items: lineItems }),
+            });
+        }
+
         const action = editingDealId ? 'updated' : 'created';
         closeModal();
         const dd = await fetch('/api/deals', { headers: getAuthHeaders() });
@@ -579,6 +674,73 @@ function downloadCSV(rows, filename) {
     a.click();
     URL.revokeObjectURL(a.href);
 }
+
+// ---- Line Items ----
+
+function addLineItem() {
+    lineItems.push({ product_id: null, product_name: '', qty: 1, unit_price: 0 });
+    renderLineItems();
+}
+
+function removeLineItem(idx) {
+    lineItems.splice(idx, 1);
+    renderLineItems();
+}
+
+function renderLineItems() {
+    const container = document.getElementById('lineItemsContainer');
+    if (!lineItems.length) {
+        container.innerHTML = '<p class="text-xs text-gray-400 italic">No items — enter deal value manually above.</p>';
+        document.getElementById('lineItemsTotal').classList.add('hidden');
+        const v = document.getElementById('f_value');
+        v.readOnly = false;
+        v.classList.remove('bg-gray-50', 'text-gray-400');
+        return;
+    }
+    container.innerHTML = lineItems.map((item, idx) => `
+        <div class="grid items-center gap-1.5 text-xs" style="grid-template-columns:1fr 52px 90px 20px">
+            <input type="text" list="productList"
+                value="${esc(item.product_name)}" placeholder="Product name"
+                class="px-2.5 py-1.5 border rounded-lg focus:ring-2 focus:ring-evgreen outline-none"
+                oninput="lineItems[${idx}].product_name=this.value"
+                onchange="matchProduct(${idx},this.value)">
+            <input type="number" value="${item.qty}" min="1" placeholder="Qty"
+                class="px-2 py-1.5 border rounded-lg text-center focus:ring-2 focus:ring-evgreen outline-none"
+                oninput="lineItems[${idx}].qty=parseInt(this.value)||1;updateTotal()">
+            <input type="number" value="${item.unit_price}" min="0" step="0.01" placeholder="Unit $"
+                class="px-2 py-1.5 border rounded-lg text-right focus:ring-2 focus:ring-evgreen outline-none"
+                oninput="lineItems[${idx}].unit_price=parseFloat(this.value)||0;updateTotal()">
+            <button type="button" onclick="removeLineItem(${idx})"
+                class="text-gray-300 hover:text-red-500 transition text-base leading-none text-center">×</button>
+        </div>
+    `).join('');
+    updateTotal();
+}
+
+function updateTotal() {
+    const total = lineItems.reduce((s, i) => s + (parseInt(i.qty) || 1) * (parseFloat(i.unit_price) || 0), 0);
+    const el    = document.getElementById('lineItemsTotal');
+    el.textContent = `Total: SGD ${total.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    el.classList.remove('hidden');
+    const v = document.getElementById('f_value');
+    v.value    = total.toFixed(2);
+    v.readOnly = true;
+    v.classList.add('bg-gray-50', 'text-gray-400');
+}
+
+function matchProduct(idx, value) {
+    const match = allProducts.find(p => p.name.toLowerCase() === value.toLowerCase());
+    if (match) {
+        lineItems[idx].product_id   = match.id;
+        lineItems[idx].product_name = match.name;
+        lineItems[idx].unit_price   = parseFloat(match.price) || 0;
+        renderLineItems();
+    } else {
+        lineItems[idx].product_id = null;
+    }
+}
+
+// ---- CSV Export ----
 
 function exportDeals() {
     const search = document.getElementById('searchInput').value.toLowerCase();

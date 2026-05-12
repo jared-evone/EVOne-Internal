@@ -4,11 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}EVOne OPS{% endblock %}</title>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { theme: { extend: { colors: { evgreen: '#00ad5f', sidebar: '#111827' } } } }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     {% block extra_scripts %}{% endblock %}
     <style>
         .tab-content.hidden { display: none; }
@@ -85,6 +87,9 @@
             <a href="/deals" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
                 <span class="font-medium">Deals</span>
             </a>
+            <a href="/agents" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
+                <span class="font-medium">Sales Agents</span>
+            </a>
             <a href="/team" class="flex items-center px-4 py-3 hover:bg-gray-800 rounded-lg group">
                 <span class="font-medium">Team Members</span>
             </a>
@@ -128,6 +133,23 @@
 
     <script>
         let supabaseClient;
+
+        // ── Session-level data cache (per browser tab, auto-expires) ──────────────
+        window._cache = {
+            get(key) {
+                try {
+                    const raw = sessionStorage.getItem('_c_' + key);
+                    if (!raw) return null;
+                    const item = JSON.parse(raw);
+                    if (Date.now() > item.exp) { sessionStorage.removeItem('_c_' + key); return null; }
+                    return item.data;
+                } catch { return null; }
+            },
+            set(key, data, ttlMs) {
+                try { sessionStorage.setItem('_c_' + key, JSON.stringify({ data, exp: Date.now() + (ttlMs || 300000) })); } catch {}
+            },
+            del(key) { try { sessionStorage.removeItem('_c_' + key); } catch {} },
+        };
 
         // ── Toast notification system ─────────────────────────────────────────────
         window.showToast = function(message, type) {

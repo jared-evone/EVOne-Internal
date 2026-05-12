@@ -618,6 +618,7 @@ async function deleteSelected() {
         await Promise.all(ids.map(id =>
             fetch(`/api/products/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
         ));
+        _cache.del('products');
         await loadProducts();
         showToast(`${ids.length} product(s) deleted.`, 'success');
     } catch (e) {
@@ -707,6 +708,7 @@ async function submitProduct() {
         const data = await res.json();
         if (data.error) throw new Error(data.message);
         const action = editingProductId ? 'updated' : 'created';
+        _cache.del('products');
         closeModal();
         await loadProducts();
         showToast(`Product ${action} successfully.`, 'success');

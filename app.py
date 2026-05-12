@@ -23,9 +23,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from pydantic import BaseModel
 
 import config
-from services import deals, docuseal, inventory, sales
+from services import agents as agents_svc, deals, docuseal, inventory, sales
 from services.supabase_client import (
     get_user_role_id,
+    invalidate_role_cache,
     list_bucket,
     signed_url,
     upload_to_bucket,
@@ -133,10 +134,11 @@ async def serve_customers(request: Request):
 
 @app.get("/config")
 async def get_config():
-    return {
-        "supabase_url": config.SUPABASE_URL,
-        "supabase_key": config.SUPABASE_ANON_KEY,
-    }
+    return Response(
+        content=f'{{"supabase_url":"{config.SUPABASE_URL}","supabase_key":"{config.SUPABASE_ANON_KEY}"}}',
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/api/me")
@@ -743,6 +745,17 @@ async def post_stock_movement(data: StockMovementCreate, user: dict = Depends(ge
 # ==========================================
 # 8. Deals
 # ==========================================
+class DealItemPayload(BaseModel):
+    product_id: str | None = None
+    product_name: str
+    qty: int = 1
+    unit_price: float = 0.0
+
+
+class DealItemsUpdate(BaseModel):
+    items: list[DealItemPayload]
+
+
 class DealCreate(BaseModel):
     title: str
     customer_id: str | None = None
@@ -753,6 +766,7 @@ class DealCreate(BaseModel):
     expected_close: str | None = None
     closed_at: str | None = None
     notes: str | None = None
+    owner_id: str | None = None
 
 
 class DealUpdate(BaseModel):
@@ -765,6 +779,7 @@ class DealUpdate(BaseModel):
     expected_close: str | None = None
     closed_at: str | None = None
     notes: str | None = None
+    owner_id: str | None = None
 
 
 @app.get("/deals")
@@ -824,8 +839,136 @@ async def delete_deal(deal_id: str, _user: dict = Depends(get_current_user)):
         return {"error": True, "message": str(e)}
 
 
+@app.get("/api/deals/{deal_id}/items")
+async def get_deal_items(deal_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        return {"items": deals.list_deal_items(deal_id)}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/deals/{deal_id}/items")
+async def put_deal_items(deal_id: str, data: DealItemsUpdate, _user: dict = Depends(get_current_user)):
+    try:
+        items = [i.model_dump() for i in data.items]
+        saved = deals.set_deal_items(deal_id, items)
+        if items:
+            total = sum(i["qty"] * i["unit_price"] for i in items)
+            deals.update_deal(deal_id, {"value": total})
+        return {"items": saved}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
 # ==========================================
-# 9. User Management (Admin Only)
+# 9. Sales Agents
+# ==========================================
+
+class AgentCreate(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    notes: str | None = None
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    notes: str | None = None
+
+
+@app.get("/agents")
+async def serve_agents(request: Request):
+    return templates.TemplateResponse(request=request, name="agents.html")
+
+
+@app.get("/api/agents")
+async def list_agents_api(_user: dict = Depends(get_current_user)):
+    try:
+        agent_list = agents_svc.list_agents()
+        all_deals = deals.list_deals()
+        open_stages = {"Lead", "Proposal", "Negotiation"}
+        result = []
+        for a in agent_list:
+            aid = a["id"]
+            agent_deals = [d for d in all_deals if d.get("owner_id") == aid]
+            pipeline_value = sum(float(d.get("value") or 0) for d in agent_deals if d.get("stage") in open_stages)
+            stage_counts = {}
+            for d in agent_deals:
+                s = d.get("stage", "Lead")
+                stage_counts[s] = stage_counts.get(s, 0) + 1
+            result.append({
+                "id": aid,
+                "name": a.get("name", ""),
+                "email": a.get("email", ""),
+                "phone": a.get("phone", ""),
+                "deal_count": len(agent_deals),
+                "pipeline_value": pipeline_value,
+                "stage_counts": stage_counts,
+            })
+        return {"agents": result}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.post("/api/agents")
+async def create_agent_api(data: AgentCreate, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        agent = agents_svc.create_agent(data.model_dump(exclude_none=True))
+        return {"agent": agent}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.put("/api/agents/{agent_id}")
+async def update_agent_api(agent_id: str, data: AgentUpdate, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        payload = data.model_dump(exclude_none=True)
+        if not payload:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        agent = agents_svc.update_agent(agent_id, payload)
+        return {"agent": agent}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.delete("/api/agents/{agent_id}")
+async def delete_agent_api(agent_id: str, user: dict = Depends(get_current_user)):
+    if not check_is_admin(user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return agents_svc.delete_agent(agent_id)
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+@app.get("/api/agents/{agent_id}/deals")
+async def get_agent_deals(agent_id: str, _user: dict = Depends(get_current_user)):
+    try:
+        agent_deals = deals.list_deals(owner_id=agent_id)
+        customer_ids = list({d["customer_id"] for d in agent_deals if d.get("customer_id")})
+        customers = []
+        if customer_ids:
+            res = supabase_admin.schema("evone_billing").table("customers").select("*").in_("id", customer_ids).execute()
+            customers = res.data or []
+        name_only = {d["customer_name"] for d in agent_deals if d.get("customer_name") and not d.get("customer_id")}
+        for name in name_only:
+            if not any(c.get("name", "").lower() == name.lower() for c in customers):
+                customers.append({"id": None, "name": name})
+        return {"deals": agent_deals, "customers": customers}
+    except Exception as e:
+        return {"error": True, "message": str(e)}
+
+
+# ==========================================
+# 10. User Management (Admin Only)
 # ==========================================
 
 class UpdateRolePayload(BaseModel):
@@ -888,6 +1031,7 @@ async def update_user_role(user_id: str, payload: UpdateRolePayload, user: dict 
         supabase_admin.schema("evone_billing").table("users").update(
             update_data
         ).eq("id", user_id).execute()
+        invalidate_role_cache(user_id)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

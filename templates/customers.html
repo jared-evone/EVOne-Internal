@@ -302,6 +302,7 @@ const AVATAR_FG = ['#166534','#1e40af','#5b21b6','#713f12','#9d174d','#075985','
 
 let allCustomers    = [];
 let allDeals        = [];
+let agentMap        = {};
 let activeTypeFilter = 'All';
 let selectedType    = 'Residential';
 let editingId       = null;
@@ -354,8 +355,12 @@ async function onPageLoad() {
     setModalType('Residential');
     await loadCustomers();
     try {
-        const r = await fetch('/api/deals', { headers: getAuthHeaders() });
-        if (r.ok) { const d = await r.json(); if (!d.error) allDeals = d.deals || []; }
+        const [dealsRes, agentsRes] = await Promise.all([
+            fetch('/api/deals',  { headers: getAuthHeaders() }),
+            fetch('/api/agents', { headers: getAuthHeaders() }),
+        ]);
+        if (dealsRes.ok)  { const d = await dealsRes.json();  if (!d.error)  allDeals = d.deals || []; }
+        if (agentsRes.ok) { const a = await agentsRes.json(); if (!a.error)  agentMap = Object.fromEntries((a.agents || []).map(ag => [ag.id, ag.name])); }
     } catch (_) {}
 }
 
@@ -731,6 +736,7 @@ function openDetailPanel(customer) {
                     ${d.type ? `<span>${esc(d.type)}</span><span>·</span>` : ''}
                     <span class="font-semibold text-gray-700">SGD ${Number(d.value || 0).toLocaleString()}</span>
                     ${d.expected_close ? `<span>· closes ${esc(d.expected_close)}</span>` : ''}
+                    ${agentMap[d.owner_id] ? `<span>· <span class="text-evgreen font-medium">${esc(agentMap[d.owner_id])}</span></span>` : ''}
                 </div>
             </div>`;
           }).join('')
